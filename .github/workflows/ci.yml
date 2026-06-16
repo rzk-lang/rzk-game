@@ -1,0 +1,51 @@
+name: CI
+
+# Guard the build: the engine must compile and link to wasm. Mirrors the
+# approach of rzk's own wasm lane — provision the GHC WebAssembly toolchain via
+# ghc-wasm-meta's prebuilt bindists (not nix) and cache the wasm cabal store.
+# The flake.nix is the reproducible local-dev route; CI uses ghc-wasm-meta
+# directly, as rzk does.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-build:
+    name: Build the engine (GHC WASM backend)
+    runs-on: ubuntu-latest
+    env:
+      # wasm32-wasi-ghc flavour; keep in step with flake.nix (all_9_12).
+      FLAVOUR: "9.12"
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Install the GHC WASM toolchain (ghc-wasm-meta)
+        run: |
+          cd "$(mktemp -d)"
+          curl -f -L --retry 5 \
+            https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta/-/archive/master/ghc-wasm-meta-master.tar.gz \
+            | tar xz --strip-components=1
+          ./setup.sh
+          ~/.ghc-wasm/add_to_github_path.sh
+
+      - name: 💾 Cache the wasm cabal store
+        uses: actions/cache@v4
+        with:
+          # wasm32-wasi-cabal keeps an isolated store under ~/.ghc-wasm.
+          path: ~/.ghc-wasm/.cabal/store
+          key: wasm-cabal-${{ runner.os }}-ghc${{ env.FLAVOUR }}-${{ hashFiles('cabal.project', 'rzk-game.cabal') }}
+          restore-keys: |
+            wasm-cabal-${{ runner.os }}-ghc${{ env.FLAVOUR }}-
+
+      - name: 🔨 Build to wasm
+        run: |
+          wasm32-wasi-cabal update
+          wasm32-wasi-cabal build exe:rzk-game --flags=-lsp
