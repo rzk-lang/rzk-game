@@ -26,20 +26,32 @@ jobs:
       - name: ❄️ Install Nix
         uses: DeterminateSystems/nix-installer-action@main
 
-      - name: 💾 Cache the wasm cabal store
+      - name: 💾 Cache the wasm cabal store and Hackage index
         uses: actions/cache@v4
         with:
-          path: .wasm-store
+          path: |
+            .wasm-store
+            .cabal-wasm
           key: wasm-store-${{ runner.os }}-${{ hashFiles('cabal.project', 'rzk-game.cabal', 'flake.lock') }}
           restore-keys: |
             wasm-store-${{ runner.os }}-
 
       - name: 🔨 Build and optimise (in the nix dev shell)
         # nix supplies the wasm toolchain (flake.nix); cabal does the Haskell
-        # build against cabal.project (which pins rzk and miso). The first run
-        # compiles rzk + miso under wasm from scratch (several minutes); the
-        # cached store makes later runs fast.
-        run: nix develop --command bash -c 'make build WASM_STORE="$PWD/.wasm-store" && make optim'
+        # build against cabal.project (which pins rzk and miso). The pinned repos
+        # still draw their transitive deps (aeson, with-utf8, …) from Hackage, so
+        # the index must be fetched first — a fresh runner has none, which makes
+        # the solver fail with "unknown package". CABAL_DIR is pointed at the
+        # workspace so the index is cached alongside the store; `cabal update`
+        # then refreshes it incrementally. The first run compiles rzk + miso under
+        # wasm from scratch (several minutes); the caches make later runs fast.
+        run: |
+          nix develop --command bash -c '
+            export CABAL_DIR="$PWD/.cabal-wasm" &&
+            wasm32-wasi-cabal update &&
+            make build WASM_STORE="$PWD/.wasm-store" &&
+            make optim
+          '
 
       - name: 🚀 Deploy to GitHub Pages (gh-pages)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
