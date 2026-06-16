@@ -25,8 +25,10 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             ghc-wasm-meta.packages.${system}.all_9_12
-            pkgs.nodejs   # WASI loader + headless checks
-            pkgs.gnumake  # the build/serve recipes
+            pkgs.binaryen    # wasm-opt (make optim)
+            pkgs.wasm-tools  # wasm-tools strip (make optim)
+            pkgs.nodejs      # WASI loader + headless checks
+            pkgs.gnumake     # the build/serve recipes
           ];
           shellHook = ''
             echo "rzk-game wasm dev shell — 'make build' then 'make serve'"
