@@ -10,9 +10,9 @@ STORE := $(if $(WASM_STORE),--store-dir=$(WASM_STORE),)
 
 # Compile to wasm, generate the JS FFI glue, and assemble public/.
 build:
-	wasm32-wasi-cabal build exe:rzk-game --flags=-lsp $(STORE)
+	wasm32-wasi-cabal $(STORE) build exe:rzk-game --flags=-lsp
 	rm -rf public && cp -r static public
-	$(eval WASM := $(shell wasm32-wasi-cabal list-bin exe:rzk-game $(STORE) | tail -n1))
+	$(eval WASM := $(shell wasm32-wasi-cabal $(STORE) list-bin exe:rzk-game | tail -n1))
 	"$(shell wasm32-wasi-ghc --print-libdir)/post-link.mjs" --input "$(WASM)" --output public/ghc_wasm_jsffi.js
 	cp "$(WASM)" public/app.wasm
 	@echo "Built public/ — serve with: make serve"
