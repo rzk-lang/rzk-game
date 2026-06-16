@@ -1,0 +1,50 @@
+cabal-version: 2.2
+name:          rzk-game
+version:       0.1.0.0
+synopsis:      Engine for interactive Rzk games (miso + GHC WebAssembly backend)
+category:      Web, Math
+build-type:    Simple
+
+flag interactive
+  description: Enable features for interactive use (GHCi browser mode)
+  default:     False
+  manual:      True
+
+-- | Pure engine logic: the level model and the check against rzk. No miso, so
+-- it uses the ordinary Prelude (the executable below remaps Prelude to miso's).
+library
+  hs-source-dirs:   src
+  exposed-modules:
+    RzkGame.Level
+    RzkGame.Content
+  build-depends:
+      base
+    , text
+    , rzk
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+-- | The miso application. Wires the L0 UI to the engine and exports the wasm
+-- entry points.
+executable rzk-game
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  build-depends:
+      base
+    , text
+    , miso
+    , rzk-game
+  mixins:
+    miso,
+    miso (Miso.Prelude as Prelude),
+    base hiding (Prelude)
+  default-language: Haskell2010
+  if arch(wasm32)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=hs_start"
+      "-optl-Wl,--export=hs_selftest"
+    cpp-options: -DWASM
+    if flag(interactive)
+      cpp-options: -DINTERACTIVE

@@ -1,0 +1,14 @@
+# Build outputs
+dist-newstyle/
+public/
+node_modules/
+*.wasm
+ghc_wasm_jsffi.js
+
+# Local cabal overrides
+cabal.project.local
+cabal.project.local~
+
+# Haskell
+*.hi
+*.o

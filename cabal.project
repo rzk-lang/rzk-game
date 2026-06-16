@@ -1,0 +1,33 @@
+-- The Rzk Games engine: a miso app compiled with the GHC WebAssembly backend,
+-- linked with the rzk library, calling the typechecker in-process.
+--
+-- rzk is pinned upstream (it builds under the wasm backend since #236, so no
+-- vendoring or patching is needed). miso is pinned to the commit the wasm build
+-- was validated against. A from-scratch build fetches and compiles both under
+-- wasm32-wasi (several minutes the first time).
+packages: .
+
+-- rzk: holes + structured goal/context query (#236–#240).
+source-repository-package
+  type: git
+  location: https://github.com/rzk-lang/rzk.git
+  tag: 33e4fe5e4b839e30200ed30050c5f248252ed6a5
+  subdir: rzk
+
+-- miso: GHC WASM backend frontend framework.
+source-repository-package
+  type: git
+  location: https://github.com/dmjio/miso.git
+  tag: d6d8e602fb1cee742c7b8fd42482e1a786ceb015
+
+-- The game does not need rzk's LSP server.
+package rzk
+  flags: -lsp
+
+allow-newer:
+  all:base
+
+if arch(wasm32)
+  shared: True
+
+flags: +template-haskell
