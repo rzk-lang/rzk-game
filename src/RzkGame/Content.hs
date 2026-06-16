@@ -54,6 +54,11 @@ hom2Level = Level
       , "id-hom   : (A : U) → (x : A) → hom A x x"
       , "λ-intro  : introduce the cube coordinates"
       ]
+  , levelActions =
+      [ ("refine f", "f ?")  -- apply f, leaving a hole for its coordinate
+      , ("give t",   "t")    -- the right coordinate: solves the hole
+      , ("give s",   "s")    -- the wrong coordinate: a type error
+      ]
   , levelConclusion =
       "The degenerate triangle is just f ignoring the second coordinate. \
       \Reusing an existing edge, reparametrised, is the bread and butter of \

@@ -11,6 +11,7 @@ module RzkGame.Level
   ( Level (..)
   , CheckResult (..)
   , checkLevel
+  , refineFirstHole
   , renderResult
   ) where
 
@@ -32,6 +33,8 @@ data Level = Level
   , levelTemplate   :: Text   -- ^ the editable region's starting text (with a @?@)
   , levelSolution   :: Text   -- ^ a reference solution (for self-tests)
   , levelInventory  :: [Text] -- ^ names available to the player
+  , levelActions    :: [(Text, Text)]
+      -- ^ tap-to-refine moves: @(button label, text inserted at the first hole)@
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -57,6 +60,16 @@ checkLevel lvl editable =
            Right (_, _, holes)
              | null holes -> Solved
              | otherwise  -> Holes (map (T.pack . ppHoleInfo) holes)
+
+-- | Tap-to-refine: replace the first hole (@?@) in the text with the given
+-- insertion. This is how a tap turns into an edit — the engine re-checks the
+-- rewritten text, so no engine-side refinement logic is needed. If there is no
+-- hole, the text is returned unchanged.
+refineFirstHole :: Text -> Text -> Text
+refineFirstHole insertion src =
+  case T.breakOn "?" src of
+    (_, after) | T.null after -> src
+    (before, after)           -> before <> insertion <> T.drop 1 after
 
 -- | A plain-text rendering of a result, for self-tests and logs.
 renderResult :: CheckResult -> Text

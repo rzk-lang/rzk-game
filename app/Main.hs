@@ -35,7 +35,7 @@ editable = lens _editable $ \m v -> m { _editable = v }
 result :: Lens Model CheckResult
 result = lens _result $ \m v -> m { _result = v }
 
-data Action = SetEditable MisoString | Check | Reset
+data Action = SetEditable MisoString | Refine T.Text | Check | Reset
   deriving (Eq)
 
 main :: IO ()
@@ -58,6 +58,10 @@ hsSelftest = do
   putStrLn (T.unpack (renderResult (checkLevel theLevel (levelTemplate theLevel))))
   putStrLn "== solution (expect Solved) =="
   putStrLn (T.unpack (renderResult (checkLevel theLevel (levelSolution theLevel))))
+  putStrLn "== tap-to-refine: refine f → give t (expect Solved) =="
+  let step1 = refineFirstHole "f ?" (levelTemplate theLevel)
+      step2 = refineFirstHole "t"   step1
+  putStrLn (T.unpack (renderResult (checkLevel theLevel step2)))
 #endif
 #endif
 
@@ -70,6 +74,11 @@ initModel = Model (ms (levelTemplate theLevel)) NotChecked
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
   SetEditable s -> editable .= s
+  Refine ins    -> do
+    e <- use editable
+    let e' = refineFirstHole ins (fromMisoString e)
+    editable .= ms e'
+    result   .= checkLevel theLevel e'
   Reset         -> do
     editable .= ms (levelTemplate theLevel)
     result   .= NotChecked
@@ -96,6 +105,12 @@ viewModel _ m =
         , P.value_ (m ^. editable)
         , H.onInput SetEditable
         ]
+    , H.h3_ [] [ text "Moves" ]
+    , H.div_ [ P.class_ "actions" ]
+        [ H.button_ [ P.class_ "refine", H.onClick (Refine ins) ] [ text (ms label) ]
+        | (label, ins) <- levelActions theLevel
+        ]
+
     , H.div_ [ P.class_ "buttons" ]
         [ H.button_ [ H.onClick Check ] [ text "Check" ]
         , H.button_ [ H.onClick Reset ] [ text "Reset" ]
