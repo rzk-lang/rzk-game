@@ -26,16 +26,19 @@ alongside this repo.
 
 ## Building
 
-Requires the GHC WASM toolchain (install via
-[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta),
-FLAVOUR 9.12), then:
+The reproducible route uses nix to provide the wasm toolchain (this is how miso
+itself is built):
 
 ```sh
-source ~/.ghc-wasm/env
+nix develop     # shell with wasm32-wasi-cabal, wasm-opt, wasm-tools, node
 make build      # compile to wasm + assemble public/
 make optim      # (optional) shrink the module
 make serve      # serve public/ locally
 ```
+
+Without nix, install the toolchain via
+[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta)
+(FLAVOUR 9.12), `source ~/.ghc-wasm/env`, then run the same `make` targets.
 
 The first build fetches and compiles `rzk` and `miso` under `wasm32-wasi`
 (several minutes).

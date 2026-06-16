@@ -12,3 +12,8 @@ cabal.project.local~
 # Haskell
 *.hi
 *.o
+
+# Nix
+result
+result-*
+.direnv/
