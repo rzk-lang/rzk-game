@@ -1,9 +1,9 @@
 // Instantiate the wasm module and start the miso app (hs_start). The WASI shim
-// is loaded from a CDN; ghc_wasm_jsffi.js is produced by post-link.mjs at build
-// time. We fetch the wasm as bytes (rather than instantiateStreaming) so we do
-// not depend on the server sending Content-Type: application/wasm.
-import { WASI, OpenFile, File, ConsoleStdout }
-  from "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.3.0/dist/index.js";
+// is vendored under ./vendor/wasi (self-hosted, no CDN at runtime);
+// ghc_wasm_jsffi.js is produced by post-link.mjs at build time. We fetch the
+// wasm as bytes (rather than instantiateStreaming) so we do not depend on the
+// server sending Content-Type: application/wasm.
+import { WASI, OpenFile, File, ConsoleStdout } from "./vendor/wasi/index.js";
 import ghc_wasm_jsffi from "./ghc_wasm_jsffi.js";
 
 const fds = [
