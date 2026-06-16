@@ -56,10 +56,18 @@ checkLevel lvl editable =
        Left err -> ParseError err
        Right m  ->
          case typecheckModulesWithHoles [("level", m)] of
-           Left err -> TypeError (T.pack (ppTypeErrorInScopedContext' BottomUp err))
-           Right (_, _, holes)
+           -- A fatal error short-circuits to 'Left'; recoverable type errors
+           -- (e.g. an unbound variable or a type mismatch) come back in the
+           -- middle field. Both must be reported — only the holes-aware
+           -- elaboration records unsolved holes separately. A real type error
+           -- takes priority over any holes the partial term still has.
+           Left err -> TypeError (ppErr err)
+           Right (_, err : _, _) -> TypeError (ppErr err)
+           Right (_, [], holes)
              | null holes -> Solved
              | otherwise  -> Holes (map (T.pack . ppHoleInfo) holes)
+  where
+    ppErr = T.pack . ppTypeErrorInScopedContext' BottomUp
 
 -- | Tap-to-refine: replace the first hole (@?@) in the text with the given
 -- insertion. This is how a tap turns into an edit — the engine re-checks the

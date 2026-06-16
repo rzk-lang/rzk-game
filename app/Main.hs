@@ -62,6 +62,10 @@ hsSelftest = do
   let step1 = refineFirstHole "f ?" (levelTemplate theLevel)
       step2 = refineFirstHole "t"   step1
   putStrLn (T.unpack (renderResult (checkLevel theLevel step2)))
+  putStrLn "== garbage: replace ? with asd (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel theLevel (refineFirstHole "asd" (levelTemplate theLevel)))))
+  putStrLn "== wrong branch: give s (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel theLevel (refineFirstHole "s" (levelTemplate theLevel)))))
 #endif
 #endif
 
