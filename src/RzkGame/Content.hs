@@ -82,7 +82,7 @@ idMorphismLevel = Level
   , levelTemplate  = T.unlines
       [ "#def my-id (A : U) (x : A)"
       , "  : hom A x x"
-      , "  := \\ t → ?"
+      , "  := ?"
       ]
   , levelSolution  = T.unlines
       [ "#def my-id (A : U) (x : A)"
@@ -115,7 +115,7 @@ constTriangleLevel = Level
   , levelTemplate  = T.unlines
       [ "#def const-triangle (A : U) (x : A)"
       , "  : hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
-      , "  := \\ (t , s) → ?"
+      , "  := ?"
       ]
   , levelSolution  = T.unlines
       [ "#def const-triangle (A : U) (x : A)"

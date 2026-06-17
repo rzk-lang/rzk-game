@@ -96,12 +96,24 @@ hsSelftest = do
     putStrLn (T.unpack (renderResult (checkLevel lvl (levelTemplate lvl))))
     putStrLn ("== level " <> show n <> " solution (expect Solved) ==")
     putStrLn (T.unpack (renderResult (checkLevel lvl (levelSolution lvl))))
-  putStrLn "== identity: give x (expect Solved) =="
+  putStrLn "== identity: intro λ → give x (expect Solved) =="
   putStrLn (T.unpack (renderResult
-    (checkLevel idMorphismLevel (refineFirstHole "x" (levelTemplate idMorphismLevel)))))
-  putStrLn "== constant triangle: give x (expect Solved) =="
+    (checkLevel idMorphismLevel
+      (refineFirstHole "x" (refineFirstHole "\\ t → ?" (levelTemplate idMorphismLevel))))))
+  putStrLn "== constant triangle: intro λ → give x (expect Solved) =="
   putStrLn (T.unpack (renderResult
-    (checkLevel constTriangleLevel (refineFirstHole "x" (levelTemplate constTriangleLevel)))))
+    (checkLevel constTriangleLevel
+      (refineFirstHole "x" (refineFirstHole "\\ (t, s) → ?" (levelTemplate constTriangleLevel))))))
+  putStrLn "== intro moves: offered for the bare-hole templates =="
+  let dumpIntros lvl = case checkLevel lvl (levelTemplate lvl) of
+        Holes (h : _) ->
+          mapM_ (\(l, i) -> putStrLn ("   " <> T.unpack (l <> "  ↦  " <> i)))
+                [ a | a@(lbl, _) <- holeActions h, "intro " `T.isPrefixOf` lbl ]
+        r -> putStrLn ("   (no holes: " <> T.unpack (renderResult r) <> ")")
+  putStrLn "-- identity --"
+  dumpIntros idMorphismLevel
+  putStrLn "-- constant triangle --"
+  dumpIntros constTriangleLevel
   putStrLn "== right-unit tap-to-refine: refine f → give t (expect Solved) =="
   let step1 = refineFirstHole "f ?" (levelTemplate hom2Level)
       step2 = refineFirstHole "t"   step1
