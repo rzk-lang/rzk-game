@@ -23,8 +23,16 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      # Install Nix with a single-user, runner-writable /nix store. This is the
+      # installer cache-nix-action is built to pair with: the DeterminateSystems
+      # installer uses a daemon and a read-only store, which makes the cache's
+      # tar restore fail ("Cannot mkdir/Cannot open"), so the toolchain cache
+      # never actually loads. nix-quick-install avoids that.
       - name: ❄️ Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
 
       # Cache the realised nix store — the ghc-wasm toolchain (GHC wasm backend,
       # wasm-opt, wasm-tools, node). Realising it from scratch is the single
