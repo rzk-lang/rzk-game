@@ -299,32 +299,41 @@ updateModel = \case
 
 viewModel :: props -> Model -> View Model Action
 viewModel _ m =
-  H.section_ [ P.class_ "level" ]
-    [ levelPicker m
-
-    , H.h2_ [] [ text (ms (levelTitle lvl)) ]
-    , H.p_  [] [ text (ms (levelIntro lvl)) ]
-
-    , H.h3_ [] [ text "Goal" ]
-    , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
-
-    , preludeView lvl
-
-    , H.h3_ [] [ text "Your proof" ]
-    , editorView (m ^. editable)
-    , H.h3_ [] [ text "Moves" ]
-    , movesView m
-    , H.div_ [ P.class_ "buttons" ]
-        [ H.button_ [ H.onClick Check ] [ text "Check" ]
-        , H.button_ [ H.onClick Reset ] [ text "Reset" ]
+  H.div_ []
+    [ H.header_ [ P.class_ "game" ]
+        [ H.h1_ [] [ text "Rzk Game" ]
+        , H.p_ [ P.class_ "tagline" ]
+            [ text "An interactive Rzk proof game — fill the holes." ]
         ]
+    , H.section_ [ P.class_ "level" ]
+        [ levelPicker m
 
-    , H.h3_ [] [ text "Result" ]
-    , resultView lvl (m ^. result)
-    , advanceView m
+        , H.h2_ [] [ text (ms (titleMark <> levelTitle lvl)) ]
+        , H.p_  [] [ text (ms (levelIntro lvl)) ]
+
+        , H.h3_ [] [ text "Goal" ]
+        , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
+
+        , preludeView lvl
+
+        , H.h3_ [] [ text "Your proof" ]
+        , editorView (m ^. editable)
+        , H.h3_ [] [ text "Moves" ]
+        , movesView m
+        , H.div_ [ P.class_ "buttons" ]
+            [ H.button_ [ P.class_ "primary",   H.onClick Check ] [ text "Check" ]
+            , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
+            ]
+
+        , H.h3_ [] [ text "Result" ]
+        , resultView lvl (m ^. result)
+        , advanceView m
+        ]
     ]
   where
-    lvl = currentLevel m
+    lvl       = currentLevel m
+    -- A solved tick on the current level's heading, echoing the level picker.
+    titleMark = if isSolved m (_levelIx m) then "✓ " else ""
 
 -- | The level's read-only prelude. It is reference material, not the focus, so
 -- it is collapsed by default; opening it reveals the given definitions,

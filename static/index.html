@@ -7,6 +7,10 @@
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
+    header.game { border-bottom: 1px solid #eee; margin-bottom: 1rem;
+                  padding-bottom: .5rem; }
+    header.game h1 { margin: 0; font-size: 1.5rem; }
+    header.game .tagline { margin: .2rem 0 0; color: #777; font-size: .9rem; }
     h2 { margin-bottom: .2rem; }
     h3 { margin: 1rem 0 .3rem; font-size: 1rem; color: #444; }
     pre { background: #f5f5f5; padding: .6rem; border-radius: 6px;
@@ -58,6 +62,17 @@
     .buttons { margin: .5rem 0; }
     .actions { margin: .3rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
+    /* Primary (Check) / secondary (Reset) hierarchy for the main actions. */
+    .buttons button.primary { background: #2563eb; color: #fff;
+                              border: 1px solid #1d4ed8; border-radius: 6px;
+                              cursor: pointer; }
+    .buttons button.primary:hover { background: #1d4ed8; }
+    .buttons button.secondary { background: #fff; color: #444;
+                                border: 1px solid #ccc; border-radius: 6px;
+                                cursor: pointer; }
+    .buttons button.secondary:hover { background: #f3f3f3; }
+    .levels button:hover { border-color: #999; }
+    .advance button:hover { background: #cfe9cf; }
     /* Two-part move button: a colour-coded kind chip + a syntax-highlighted
        filler term. The button itself is a flex container with no padding; the
        two parts supply their own. */
@@ -74,6 +89,8 @@
     button.refine .move-term { display: flex; align-items: center;
                     padding: .35rem .6rem; color: #222;
                     font-family: ui-monospace, monospace; white-space: pre; }
+    button.refine:hover { border-color: #66a;
+                          box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
     .err { background: #fdd; padding: .6rem; border-radius: 6px; }
     .err p { margin: 0 0 .4rem; }
     .errdump { max-height: 14rem; overflow: auto; margin: 0;
