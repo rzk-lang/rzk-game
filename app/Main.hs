@@ -23,7 +23,8 @@ import qualified Data.Set           as Set
 import qualified Data.Text          as T
 import           Text.Read          (readMaybe)
 
-import           RzkGame.Content    (apHomLevel, constTriangleLevel,
+import           RzkGame.Content    (apHomLevel, composeLevel,
+                                     composeWitnessLevel, constTriangleLevel,
                                      gameLevels, hom2Level, homLeftUnitLevel,
                                      idMorphismLevel, mapPointLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
@@ -121,6 +122,12 @@ hsSelftest = do
   putStrLn "== ap-hom tap-to-refine: refine f → give t inside g (?) (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (checkLevel apHomLevel (refineFirstHole "t" (refineFirstHole "f ?" (levelTemplate apHomLevel))))))
+  putStrLn "== compose: give first (first (is-segal-A x y z f g)) (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (checkLevel composeLevel (refineFirstHole "first (first (is-segal-A x y z f g))" (levelTemplate composeLevel)))))
+  putStrLn "== compose-witness: give second (first (is-segal-A x y z f g)) (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (checkLevel composeWitnessLevel (refineFirstHole "second (first (is-segal-A x y z f g))" (levelTemplate composeWitnessLevel)))))
   putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl
