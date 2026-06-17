@@ -12,12 +12,14 @@ module RzkGame.Level
   ( Level (..)
   , CheckResult (..)
   , HoleView (..)
+  , MoveKind (..)
   , checkLevel
   , holeActions
   , refineFirstHole
   , renderResult
   ) where
 
+import           Data.Char            (isSpace)
 import           Data.List            (nub)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
@@ -112,29 +114,64 @@ checkLevel lvl editable =
 -- insertion. This is how a tap turns into an edit — the engine re-checks the
 -- rewritten text, so no engine-side refinement logic is needed. If there is no
 -- hole, the text is returned unchanged.
+--
+-- The insertion is parenthesised (see 'parenthesize') so an application spine or
+-- a lambda cannot re-associate or fail to parse in the hole's position.
 refineFirstHole :: Text -> Text -> Text
 refineFirstHole insertion src =
   case T.breakOn "?" src of
     (_, after) | T.null after -> src
-    (before, after)           -> before <> insertion <> T.drop 1 after
+    (before, after)           -> before <> parenthesize insertion <> T.drop 1 after
+
+-- | Wrap a refinement insertion in parentheses, unless it does not need them: a
+-- bare atom (no internal whitespace, e.g. @x@, @refl@, @recBOT@) and a term that
+-- is already a single parenthesised group (e.g. @(? , ?)@) are left as is. This
+-- keeps the rewritten proof parseable without sprinkling redundant parentheses.
+parenthesize :: Text -> Text
+parenthesize ins
+  | not (T.any isSpace s)             = ins
+  | "(" `T.isPrefixOf` s && wrapsWhole s = ins
+  | otherwise                         = "(" <> ins <> ")"
+  where
+    s = T.strip ins
+
+-- | Does the leading @(@ of a string close only at its final character — i.e. is
+-- the whole string a single parenthesised group, rather than two adjacent ones?
+wrapsWhole :: Text -> Bool
+wrapsWhole s = go (0 :: Int) 0 (T.unpack s)
+  where
+    n = T.length s
+    go _ _ []           = False
+    go depth i (c : cs) =
+      let depth' = case c of '(' -> depth + 1; ')' -> depth - 1; _ -> depth
+      in if depth' == 0 then i == n - 1 else go depth' (i + 1) cs
+
+-- | The kind of a tap-to-fill move, used to colour-code the move button and
+-- separate the move's kind from its filler term in the UI.
+--
+--   * 'Intro' builds a value of the goal by its constructor;
+--   * 'Give' is an elimination spine over a hypothesis or a context-driven move.
+data MoveKind = Intro | Give
+  deriving (Eq, Show)
 
 -- | Smart inventory: the tap-to-fill moves offered for a focused hole, computed
--- type-directed by rzk rather than by string heuristics here. Two kinds, both
--- dropped onto the first @?@ (whose carried holes become the next moves):
+-- type-directed by rzk rather than by string heuristics here. Each move is its
+-- 'MoveKind' paired with the filler term that is dropped onto the first @?@
+-- (whose carried holes become the next moves):
 --
---   * /introductions/ build a value of the goal by its constructor (rzk's
+--   * 'Intro' moves build a value of the goal by its constructor (rzk's
 --     @holeIntroductions@): @\\ (t , s) → ?@, @(? , ?)@, @refl@, a tope
---     constructor, … — labelled @intro@;
---   * /gives/ are elimination spines over the hypotheses and context-driven
---     moves like @recBOT@ / @recOR@ (rzk's @holeCandidates@) — labelled @give@.
+--     constructor, …;
+--   * 'Give' moves are elimination spines over the hypotheses and context-driven
+--     moves like @recBOT@ / @recOR@ (rzk's @holeCandidates@).
 --
 -- Introductions come first: they make progress on the goal's own structure,
 -- which is usually what a fresh @?@ needs. We keep rzk's order within each kind
 -- and only drop duplicates.
-holeActions :: HoleView -> [(Text, Text)]
+holeActions :: HoleView -> [(MoveKind, Text)]
 holeActions HoleView{..} =
-     [ ("intro " <> m, m) | m <- nub hvIntros ]
-  <> [ ("give "  <> m, m) | m <- nub hvMoves ]
+     [ (Intro, m) | m <- nub hvIntros ]
+  <> [ (Give,  m) | m <- nub hvMoves ]
 
 -- | Render rzk's notation as the ASCII the levels use in prose and reference
 -- solutions, so a tapped move reads the same as the text the player would type.

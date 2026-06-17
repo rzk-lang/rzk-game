@@ -105,10 +105,11 @@ hsSelftest = do
     (checkLevel constTriangleLevel
       (refineFirstHole "x" (refineFirstHole "\\ (t, s) → ?" (levelTemplate constTriangleLevel))))))
   putStrLn "== intro moves: offered for the bare-hole templates =="
-  let dumpIntros lvl = case checkLevel lvl (levelTemplate lvl) of
+  let showMove (k, i) = (case k of Intro -> "intro "; Give -> "give ") <> i <> "  ↦  " <> i
+      dumpIntros lvl = case checkLevel lvl (levelTemplate lvl) of
         Holes (h : _) ->
-          mapM_ (\(l, i) -> putStrLn ("   " <> T.unpack (l <> "  ↦  " <> i)))
-                [ a | a@(lbl, _) <- holeActions h, "intro " `T.isPrefixOf` lbl ]
+          mapM_ (\mv -> putStrLn ("   " <> T.unpack (showMove mv)))
+                [ a | a@(k, _) <- holeActions h, k == Intro ]
         r -> putStrLn ("   (no holes: " <> T.unpack (renderResult r) <> ")")
   putStrLn "-- identity --"
   dumpIntros idMorphismLevel
@@ -124,12 +125,11 @@ hsSelftest = do
   putStrLn (T.unpack (renderResult (checkLevel hom2Level (refineFirstHole "s" (levelTemplate hom2Level)))))
   putStrLn "== right-unit smart inventory: moves for the template hole =="
   case checkLevel hom2Level (levelTemplate hom2Level) of
-    Holes (h : _) -> mapM_ (\(l, i) -> putStrLn (T.unpack (l <> "  ↦  " <> i)))
-                           (holeActions h)
+    Holes (h : _) -> mapM_ (putStrLn . T.unpack . showMove) (holeActions h)
     r             -> putStrLn ("(expected holes, got " <> T.unpack (renderResult r) <> ")")
   putStrLn "== smart inventory: moves for every level's template hole =="
   let dumpMoves src lvl = case checkLevel lvl src of
-        Holes (h : _) -> mapM_ (\(l, i) -> putStrLn ("   " <> T.unpack (l <> "  ↦  " <> i)))
+        Holes (h : _) -> mapM_ (\mv -> putStrLn ("   " <> T.unpack (showMove mv)))
                                (holeActions h)
         r             -> putStrLn ("   (no holes: " <> T.unpack (renderResult r) <> ")")
   flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(n, lvl) -> do
@@ -401,10 +401,26 @@ movesView m =
     Holes (h : _)
       | moves@(_ : _) <- holeActions h ->
           H.div_ [ P.class_ "actions" ]
-            [ H.button_ [ P.class_ "refine", H.onClick (Refine ins) ] [ text (ms label) ]
-            | (label, ins) <- moves
-            ]
+            [ moveButton kind ins | (kind, ins) <- moves ]
     _ -> H.p_ [ P.class_ "muted" ] [ text "Moves appear here when a hole is in focus." ]
+
+-- | A two-part move button: a colour-coded chip naming the move kind (intro /
+-- give), then the filler term rendered with the same syntax highlighting as the
+-- editor. Splitting the two keeps the kind and the term glanceable, rather than
+-- running them together into one contiguous string.
+moveButton :: MoveKind -> T.Text -> View Model Action
+moveButton kind ins =
+  H.button_ [ P.class_ "refine", H.onClick (Refine ins) ]
+    [ H.span_ [ P.class_ (ms ("move-kind " <> kindClass)) ] [ text (ms kindLabel) ]
+    , H.span_ [ P.class_ "move-term" ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- highlight ins
+        ]
+    ]
+  where
+    (kindLabel, kindClass) = case kind of
+      Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
+      Give  -> ("give",            "kind-give")
 
 -- | When the level is solved, offer a step onward: the next level if one
 -- follows, otherwise a closing line once every level is done.
