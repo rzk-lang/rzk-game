@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | The level model and the check against rzk.
 --
@@ -10,6 +11,7 @@
 module RzkGame.Level
   ( Level (..)
   , CheckResult (..)
+  , HoleView (..)
   , checkLevel
   , refineFirstHole
   , renderResult
@@ -19,8 +21,8 @@ import           Data.Text            (Text)
 import qualified Data.Text            as T
 
 import           Language.Rzk.Syntax  (parseModule)
-import           Rzk.Diagnostic       (ppHoleInfo)
-import           Rzk.TypeCheck        (OutputDirection (BottomUp),
+import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
+                                       OutputDirection (BottomUp),
                                        ppTypeErrorInScopedContext',
                                        typecheckModulesWithHoles)
 
@@ -43,9 +45,42 @@ data CheckResult
   = NotChecked          -- ^ nothing checked yet
   | ParseError Text     -- ^ the source did not parse
   | TypeError Text      -- ^ a genuine type error (not just a hole)
-  | Holes [Text]        -- ^ unsolved holes, each rendered with its goal + context
+  | Holes [HoleView]    -- ^ unsolved holes, each with its goal + local context
   | Solved              -- ^ typechecks with no remaining holes
   deriving (Eq, Show)
+
+-- | A single hole with every part pre-rendered to display text, so the UI can
+-- lay it out as panels (goal / context / cube variables / topes) without
+-- depending on rzk's internal term representation. The global environment is
+-- deliberately excluded by rzk (it belongs in a searchable inventory, not the
+-- goal panel); local hypotheses are split into term variables and cube
+-- variables, matching the cube/tope layer of simplicial type theory.
+data HoleView = HoleView
+  { hvName     :: Maybe Text     -- ^ the @?name@, if the hole was named
+  , hvGoal     :: Text           -- ^ the goal, shown as @(b : ty | tope)@ for a shape
+  , hvContext  :: [(Text, Text)] -- ^ term hypotheses, as @(name, type)@
+  , hvCubeVars :: [(Text, Text)] -- ^ cube variables, as @(name, type)@
+  , hvTopes    :: [Text]         -- ^ tope assumptions
+  } deriving (Eq, Show)
+
+-- | Convert rzk's structured 'HoleInfo' into a display-ready 'HoleView'. Each
+-- field is already in user-facing names, so we just render it to text here.
+toHoleView :: HoleInfo -> HoleView
+toHoleView HoleInfo{..} = HoleView
+  { hvName     = (\n -> "?" <> tshow n) <$> holeName
+  , hvGoal     = case holeGoalShape of
+      Nothing        -> tshow holeGoal
+      Just (s, tope) -> "(" <> tshow s <> " : " <> tshow holeGoal
+                          <> " | " <> tshow tope <> ")"
+  , hvContext  = map entry holeTermVars
+  , hvCubeVars = map entry holeCubeVars
+  , hvTopes    = map tshow holeTopes
+  }
+  where
+    entry e = (tshow (holeEntryName e), tshow (holeEntryType e))
+
+tshow :: Show a => a -> Text
+tshow = T.pack . show
 
 -- | Check an editable region against a level. The prelude is prepended, so the
 -- player's text is checked in the context of the given definitions.
@@ -65,7 +100,7 @@ checkLevel lvl editable =
            Right (_, err : _, _) -> TypeError (ppErr err)
            Right (_, [], holes)
              | null holes -> Solved
-             | otherwise  -> Holes (map (T.pack . ppHoleInfo) holes)
+             | otherwise  -> Holes (map toHoleView holes)
   where
     ppErr = T.pack . ppTypeErrorInScopedContext' BottomUp
 
@@ -85,5 +120,23 @@ renderResult = \case
   NotChecked   -> "(not checked)"
   ParseError e -> "Parse error:\n" <> e
   TypeError e  -> "Type error:\n" <> e
-  Holes hs     -> T.pack (show (length hs)) <> " hole(s):\n\n" <> T.intercalate "\n" hs
+  Holes hs     -> tshow (length hs) <> " hole(s):\n\n"
+                    <> T.intercalate "\n" (map renderHoleView hs)
   Solved       -> "Solved: no holes, typechecks."
+
+-- | A plain-text rendering of a single hole, mirroring rzk's @ppHoleInfo@ for
+-- the self-tests and logs.
+renderHoleView :: HoleView -> Text
+renderHoleView HoleView{..} = T.unlines $
+  [ "Hole" <> maybe "" (" " <>) hvName
+  , "  goal:"
+  , "    " <> hvGoal
+  ]
+  <> section "context" hvContext
+  <> section "cube variables" hvCubeVars
+  <> (if null hvTopes then [] else "  tope context:" : map ("    " <>) hvTopes)
+  where
+    section title entries
+      | null entries = []
+      | otherwise = ("  " <> title <> ":")
+          : [ "    " <> n <> " : " <> ty | (n, ty) <- entries ]
