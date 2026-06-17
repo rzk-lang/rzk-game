@@ -13,10 +13,13 @@ module RzkGame.Level
   , CheckResult (..)
   , HoleView (..)
   , checkLevel
+  , holeActions
   , refineFirstHole
   , renderResult
   ) where
 
+import           Data.Char            (isAlpha)
+import           Data.List            (sortOn)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 
@@ -35,8 +38,6 @@ data Level = Level
   , levelTemplate   :: Text   -- ^ the editable region's starting text (with a @?@)
   , levelSolution   :: Text   -- ^ a reference solution (for self-tests)
   , levelInventory  :: [Text] -- ^ names available to the player
-  , levelActions    :: [(Text, Text)]
-      -- ^ tap-to-refine moves: @(button label, text inserted at the first hole)@
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -113,6 +114,54 @@ refineFirstHole insertion src =
   case T.breakOn "?" src of
     (_, after) | T.null after -> src
     (before, after)           -> before <> insertion <> T.drop 1 after
+
+-- | Smart inventory: the tap-to-refine moves offered for a focused hole,
+-- derived from what is in scope and ranked by relevance to the goal. This
+-- replaces hand-authored per-level actions.
+--
+-- Two sources feed the list. Term hypotheses come from the hole's context: a
+-- function-like one is offered as @name ?@ (apply, leaving a hole for the
+-- argument), an ordinary one as @name@ (give it directly). Cube coordinates are
+-- recovered from the lambda pattern in the player's source — rzk folds a pair
+-- pattern into a single cube point and reports its components as @π₁/π₂@
+-- projections, so the original coordinate names survive only in the source.
+--
+-- Moves whose inserted name occurs in the goal are offered first. (Once rzk
+-- preserves pattern binder names, the coordinates too will appear in the goal
+-- and rank naturally.)
+holeActions :: Text -> HoleView -> [(Text, Text)]
+holeActions src HoleView{..} = sortOn relevance (termMoves <> cubeMoves)
+  where
+    termMoves =
+      [ if applicable ty then ("refine " <> n, n <> " ?") else ("give " <> n, n)
+      | (n, ty) <- hvContext
+      , ty /= "U"   -- a type parameter is rarely the term that fills a hole
+      ]
+    -- We cannot read arity off the rendered type, so treat a hypothesis as
+    -- applicable when its type is a function arrow or a hom (which unfolds to
+    -- one). This is a heuristic, refined later if HoleInfo carries arity.
+    applicable ty = "→" `T.isInfixOf` ty || "hom" `T.isInfixOf` ty
+
+    cubeMoves = [ ("give " <> n, n) | n <- binderNamesFromSource src ]
+
+    -- 0 sorts before 1: a move whose head name appears in the goal comes first.
+    relevance (_, ins)
+      | T.takeWhile (/= ' ') ins `T.isInfixOf` hvGoal = 0 :: Int
+      | otherwise                                     = 1
+
+-- | The variable names bound by the first lambda pattern in the source, e.g.
+-- @\\ (t , s) → …@ yields @["t", "s"]@. Used to offer the cube coordinates as
+-- moves while rzk still reports them as projections (see 'holeActions').
+binderNamesFromSource :: Text -> [Text]
+binderNamesFromSource src =
+  case T.breakOn "\\" src of
+    (_, rest)
+      | T.null rest -> []
+      | otherwise   ->
+          let pat = fst (T.breakOn "→" (T.replace "->" "→" (T.drop 1 rest)))
+          in filter isIdent (T.split (`elem` (" \t\r\n(),|" :: String)) pat)
+  where
+    isIdent w = not (T.null w) && w /= "_" && isAlpha (T.head w)
 
 -- | A plain-text rendering of a result, for self-tests and logs.
 renderResult :: CheckResult -> Text
