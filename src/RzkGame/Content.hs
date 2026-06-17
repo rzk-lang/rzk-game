@@ -8,6 +8,8 @@ module RzkGame.Content
   , constTriangleLevel
   , hom2Level
   , homLeftUnitLevel
+  , mapPointLevel
+  , apHomLevel
   ) where
 
 import           Data.Text (Text)
@@ -25,6 +27,8 @@ gameLevels =
   , constTriangleLevel
   , hom2Level
   , homLeftUnitLevel
+  , mapPointLevel
+  , apHomLevel
   ]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
@@ -176,4 +180,74 @@ homLeftUnitLevel = Level
   , levelConclusion =
       "The same edge f, reparametrised in the other coordinate. The right-unit \
       \triangle used the first coordinate; the left-unit one uses the second."
+  }
+
+-- | Functoriality on a point. A function @g : A → B@ sends each point of @A@ to
+-- a point of @B@. The identity morphism at @x@ is carried to the identity at its
+-- image @g x@. The application @g@ is already in place; the player fills the
+-- point it carries. Solution: the constant point @x@, so the result is @g x@.
+mapPointLevel :: Level
+mapPointLevel = Level
+  { levelTitle     = "A function on a point"
+  , levelIntro     =
+      "Now we leave a single type and bring in a function g : A → B. A function \
+      \sends each point of A to a point of B. The identity morphism at a point \
+      \just stays put, and g carries it along. The application g (?) is already \
+      \in place; fill in the point of A whose image is the identity's endpoint."
+  , levelStatement = "hom B (g x) (g x)"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def map-point (A B : U) (g : A → B) (x : A)"
+      , "  : hom B (g x) (g x)"
+      , "  := \\ t → g (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def map-point (A B : U) (g : A → B) (x : A)"
+      , "  : hom B (g x) (g x)"
+      , "  := \\ t → g (x)"
+      ]
+  , levelInventory =
+      [ "g        : A → B"
+      , "x        : A"
+      , "λ-intro  : introduce the interval coordinate"
+      ]
+  , levelConclusion =
+      "A function sends a point to a point, and the constant path at g x is its \
+      \identity. The next level carries a whole morphism along, not just a point."
+  }
+
+-- | Functoriality on a morphism (the action of a function on a 1-cell). A
+-- function @g : A → B@ carries a morphism @f : x → y@ in @A@ to a morphism
+-- @g x → g y@ in @B@, by applying @g@ at each moment of the path. The
+-- application @g@ is in place; the player fills the point @f@ traces out.
+-- Solution: the traversing point @f t@, so the result is @g (f t)@.
+apHomLevel :: Level
+apHomLevel = Level
+  { levelTitle     = "A function on a morphism"
+  , levelIntro     =
+      "Functions act on morphisms too. A morphism f : x → y in A is a path; \
+      \applying g at each moment of that path gives a morphism g x → g y in B. \
+      \The function g is already in place; fill in the point of A that f traces \
+      \out as the coordinate moves. Refine with f, then give the coordinate."
+  , levelStatement = "hom B (g x) (g y)"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def ap-hom (A B : U) (g : A → B) (x y : A) (f : hom A x y)"
+      , "  : hom B (g x) (g y)"
+      , "  := \\ t → g (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def ap-hom (A B : U) (g : A → B) (x y : A) (f : hom A x y)"
+      , "  : hom B (g x) (g y)"
+      , "  := \\ t → g (f t)"
+      ]
+  , levelInventory =
+      [ "g        : A → B"
+      , "f        : hom A x y"
+      , "λ-intro  : introduce the interval coordinate"
+      ]
+  , levelConclusion =
+      "Applying g along the path f gives a morphism between the images. This is \
+      \functoriality: a function carries morphisms to morphisms, here g (f t) \
+      \tracing g's image of f."
   }
