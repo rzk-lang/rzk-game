@@ -3,13 +3,20 @@
 -- | Hand-authored level content. (Later this comes from a game spec; see the
 -- roadmap's Phase 3.) For now, the first Rzk-native level: a @hom2@ filler.
 module RzkGame.Content
-  ( hom2Level
+  ( gameLevels
+  , hom2Level
+  , homLeftUnitLevel
   ) where
 
 import           Data.Text (Text)
 import qualified Data.Text as T
 
 import           RzkGame.Level
+
+-- | The levels, in play order. (Later this comes from a game spec; see the
+-- roadmap's Phase 3.)
+gameLevels :: [Level]
+gameLevels = [hom2Level, homLeftUnitLevel]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
 -- builds on. Checked once; populates the inventory.
@@ -58,4 +65,37 @@ hom2Level = Level
       "The degenerate triangle is just f ignoring the second coordinate. \
       \Reusing an existing edge, reparametrised, is the bread and butter of \
       \simplicial proofs."
+  }
+
+-- | The left-unit degenerate triangle: the mirror of the right-unit one. Given
+-- @f : x → y@, the triangle whose /left/ edge is the identity at @x@ again has
+-- @f@ as its hypotenuse, but the degenerate copy of @f@ must vary in the second
+-- coordinate. Solution: reuse @f@ on @s@ rather than @t@.
+homLeftUnitLevel :: Level
+homLeftUnitLevel = Level
+  { levelTitle     = "The left-unit triangle"
+  , levelIntro     =
+      "Now the mirror image. Given f : x → y, the triangle whose left edge is \
+      \the identity at x also has f as its hypotenuse — but this time the \
+      \degenerate copy of f must vary in the other coordinate. Build it."
+  , levelStatement = "hom2 A x x y (id-hom A x) f f"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def lut (A : U) (x y : A) (f : hom A x y)"
+      , "  : hom2 A x x y (id-hom A x) f f"
+      , "  := \\ (t , s) → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def lut (A : U) (x y : A) (f : hom A x y)"
+      , "  : hom2 A x x y (id-hom A x) f f"
+      , "  := \\ (t , s) → f s"
+      ]
+  , levelInventory =
+      [ "f        : hom A x y"
+      , "id-hom   : (A : U) → (x : A) → hom A x x"
+      , "λ-intro  : introduce the cube coordinates"
+      ]
+  , levelConclusion =
+      "The same edge f, reparametrised in the other coordinate. The right-unit \
+      \triangle used the first coordinate; the left-unit one uses the second."
   }
