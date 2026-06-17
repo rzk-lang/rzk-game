@@ -50,10 +50,24 @@
                 border: 1px solid #7c7; border-radius: 6px; font-weight: 600;
                 color: #285028; }
     .buttons { margin: .5rem 0; }
-    .actions { margin: .3rem 0; }
+    .actions { margin: .3rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
-    button.refine { font-family: ui-monospace, monospace; background: #eef;
-                    border: 1px solid #99c; border-radius: 6px; cursor: pointer; }
+    /* Two-part move button: a colour-coded kind chip + a syntax-highlighted
+       filler term. The button itself is a flex container with no padding; the
+       two parts supply their own. */
+    button.refine { display: inline-flex; align-items: stretch; gap: 0;
+                    padding: 0; margin: 0; overflow: hidden;
+                    background: #fff; border: 1px solid #99c; border-radius: 6px;
+                    cursor: pointer; font-size: .95rem; }
+    button.refine .move-kind { display: flex; align-items: center;
+                    padding: .35rem .55rem; color: #fff; font-weight: 600;
+                    font-family: system-ui, sans-serif; font-size: .72rem;
+                    text-transform: uppercase; letter-spacing: .04em; }
+    button.refine .kind-intro { background: #2a7a2a; }   /* introductions */
+    button.refine .kind-give  { background: #8250df; }   /* eliminations */
+    button.refine .move-term { display: flex; align-items: center;
+                    padding: .35rem .6rem; color: #222;
+                    font-family: ui-monospace, monospace; white-space: pre; }
     .err { background: #fdd; padding: .6rem; border-radius: 6px; }
     .err p { margin: 0 0 .4rem; }
     .errdump { max-height: 14rem; overflow: auto; margin: 0;
