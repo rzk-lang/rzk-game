@@ -61,7 +61,8 @@ data HoleView = HoleView
   , hvContext  :: [(Text, Text)] -- ^ term hypotheses, as @(name, type)@
   , hvCubeVars :: [(Text, Text)] -- ^ cube variables, as @(name, type)@
   , hvTopes    :: [Text]         -- ^ tope assumptions
-  , hvMoves    :: [Text]         -- ^ tap-to-fill insertions (rzk's @holeCandidates@)
+  , hvMoves    :: [Text]         -- ^ elimination/context moves (rzk's @holeCandidates@)
+  , hvIntros   :: [Text]         -- ^ introduction moves (rzk's @holeIntroductions@)
   } deriving (Eq, Show)
 
 -- | Convert rzk's structured 'HoleInfo' into a display-ready 'HoleView'. Each
@@ -76,7 +77,8 @@ toHoleView HoleInfo{..} = HoleView
   , hvContext  = map entry holeTermVars
   , hvCubeVars = map entry holeCubeVars
   , hvTopes    = map tshow holeTopes
-  , hvMoves    = map (humanizeProjections . tshow) holeCandidates
+  , hvMoves    = map (humanize . tshow) holeCandidates
+  , hvIntros   = map (humanize . tshow) holeIntroductions
   }
   where
     entry e = (tshow (holeEntryName e), tshow (holeEntryType e))
@@ -116,21 +118,37 @@ refineFirstHole insertion src =
     (_, after) | T.null after -> src
     (before, after)           -> before <> insertion <> T.drop 1 after
 
--- | Smart inventory: the tap-to-fill moves offered for a focused hole. Each is
--- an elimination spine over a local hypothesis whose type fits the goal, with
--- any applied arguments left as holes — computed type-directed by rzk (see
--- 'allEliminationsInto' / @holeCandidates@) rather than by string heuristics
--- here. Tapping a move drops it onto the first @?@; the holes it carries become
--- the next moves. We keep rzk's order (innermost hypotheses first) and only drop
--- duplicates; the label is the insertion itself, prefixed with @give@.
+-- | Smart inventory: the tap-to-fill moves offered for a focused hole, computed
+-- type-directed by rzk rather than by string heuristics here. Two kinds, both
+-- dropped onto the first @?@ (whose carried holes become the next moves):
+--
+--   * /introductions/ build a value of the goal by its constructor (rzk's
+--     @holeIntroductions@): @\\ (t , s) → ?@, @(? , ?)@, @refl@, a tope
+--     constructor, … — labelled @intro@;
+--   * /gives/ are elimination spines over the hypotheses and context-driven
+--     moves like @recBOT@ / @recOR@ (rzk's @holeCandidates@) — labelled @give@.
+--
+-- Introductions come first: they make progress on the goal's own structure,
+-- which is usually what a fresh @?@ needs. We keep rzk's order within each kind
+-- and only drop duplicates.
 holeActions :: HoleView -> [(Text, Text)]
-holeActions HoleView{..} = [ ("give " <> m, m) | m <- nub hvMoves ]
+holeActions HoleView{..} =
+     [ ("intro " <> m, m) | m <- nub hvIntros ]
+  <> [ ("give "  <> m, m) | m <- nub hvMoves ]
 
--- | Render rzk's projection notation (@π₁@ / @π₂@) as the ASCII @first@ /
--- @second@ the levels use in prose and reference solutions, so a tapped move
--- reads the same as the text the player would type. Both parse in rzk.
-humanizeProjections :: Text -> Text
-humanizeProjections = T.replace "π₁" "first" . T.replace "π₂" "second"
+-- | Render rzk's notation as the ASCII the levels use in prose and reference
+-- solutions, so a tapped move reads the same as the text the player would type.
+-- Projections @π₁@ / @π₂@ become @first@ / @second@, and the tope constants
+-- @⊤@ / @⊥@ become @TOP@ / @BOT@. All forms parse in rzk either way; the other
+-- tope operators (@≡@, @≤@, @∧@, @∨@, @↦@) already match the level notation.
+--
+-- The choices follow the sHoTT style guide's use-of-unicode conventions
+-- (https://rzk-lang.github.io/sHoTT/STYLEGUIDE/#use-of-unicode-characters):
+-- @first@ / @second@ and the @TOP@ / @BOT@ keywords are written in ASCII, while
+-- the relational tope operators are kept in their unicode form.
+humanize :: Text -> Text
+humanize = T.replace "π₁" "first" . T.replace "π₂" "second"
+         . T.replace "⊤" "TOP"    . T.replace "⊥" "BOT"
 
 -- | A plain-text rendering of a result, for self-tests and logs.
 renderResult :: CheckResult -> Text
