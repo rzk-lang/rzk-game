@@ -35,13 +35,20 @@
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }
     .tok-op      { color: #0a7d62; }
-    .levels { margin: .2rem 0 .8rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+    .levels { margin: .2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
     .levels button { margin: 0; background: #f0f0f0; border: 1px solid #ccc;
                      border-radius: 6px; cursor: pointer; }
     .levels button.current { background: #cde; border-color: #79c; font-weight: 600; }
+    .levels button.solved { background: #e7f7e7; border-color: #7c7; color: #285028; }
+    .levels button.solved.current { background: #cfe9cf; border-color: #4a4; }
+    .progress { margin: 0 0 .8rem; font-size: .85rem; color: #777; }
+    .progress.done { color: #2a7a2a; font-weight: 600; }
     .advance { margin: .5rem 0; }
     .advance button { background: #dfd; border: 1px solid #7c7; border-radius: 6px;
                       cursor: pointer; }
+    .all-done { margin: .5rem 0; padding: .6rem; background: #dff5df;
+                border: 1px solid #7c7; border-radius: 6px; font-weight: 600;
+                color: #285028; }
     .buttons { margin: .5rem 0; }
     .actions { margin: .3rem 0; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
@@ -52,6 +59,8 @@
     .errdump { max-height: 14rem; overflow: auto; margin: 0;
                background: #fff3f3; font-size: .85rem; white-space: pre; }
     .ok  { background: #dfd; padding: .6rem; border-radius: 6px; }
+    .ok pre { background: transparent; padding: 0; margin: 0; font-weight: 600; }
+    .ok p { margin: .4rem 0 0; }
     .hole { background: #ffd; border: 1px solid #e0d28a; border-radius: 6px;
             padding: .5rem .6rem; margin: .5rem 0; }
     .hole-head { font-weight: 600; margin-bottom: .3rem; }
