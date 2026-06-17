@@ -20,9 +20,22 @@
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
     button.refine { font-family: ui-monospace, monospace; background: #eef;
                     border: 1px solid #99c; border-radius: 6px; cursor: pointer; }
-    .err { background: #fdd; }
+    .err { background: #fdd; padding: .6rem; border-radius: 6px; }
+    .err p { margin: 0 0 .4rem; }
+    .errdump { max-height: 14rem; overflow: auto; margin: 0;
+               background: #fff3f3; font-size: .85rem; white-space: pre; }
     .ok  { background: #dfd; padding: .6rem; border-radius: 6px; }
-    .hole { background: #ffd; }
+    .hole { background: #ffd; border: 1px solid #e0d28a; border-radius: 6px;
+            padding: .5rem .6rem; margin: .5rem 0; }
+    .hole-head { font-weight: 600; margin-bottom: .3rem; }
+    .hole-panel { margin: .35rem 0; }
+    .hole-label { font-size: .7rem; text-transform: uppercase;
+                  letter-spacing: .04em; color: #877a3a; margin-bottom: .15rem; }
+    .hole .goal { background: #eef; margin: 0; }
+    .ctx { list-style: none; margin: 0; padding: 0;
+           font-family: ui-monospace, monospace; font-size: .9rem; }
+    .ctx .name { color: #225; }
+    .ctx .type { color: #555; }
     .inventory { font-family: ui-monospace, monospace; font-size: .9rem; }
   </style>
 </head>
