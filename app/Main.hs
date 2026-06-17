@@ -23,7 +23,9 @@ import qualified Data.Set           as Set
 import qualified Data.Text          as T
 import           Text.Read          (readMaybe)
 
-import           RzkGame.Content    (gameLevels)
+import           RzkGame.Content    (constTriangleLevel, gameLevels,
+                                     hom2Level, homLeftUnitLevel,
+                                     idMorphismLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
@@ -91,24 +93,28 @@ hsSelftest = do
     putStrLn (T.unpack (renderResult (checkLevel lvl (levelTemplate lvl))))
     putStrLn ("== level " <> show n <> " solution (expect Solved) ==")
     putStrLn (T.unpack (renderResult (checkLevel lvl (levelSolution lvl))))
-  let lvl1 = head gameLevels
-  putStrLn "== level 1 tap-to-refine: refine f → give t (expect Solved) =="
-  let step1 = refineFirstHole "f ?" (levelTemplate lvl1)
+  putStrLn "== identity: give x (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (checkLevel idMorphismLevel (refineFirstHole "x" (levelTemplate idMorphismLevel)))))
+  putStrLn "== constant triangle: give x (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (checkLevel constTriangleLevel (refineFirstHole "x" (levelTemplate constTriangleLevel)))))
+  putStrLn "== right-unit tap-to-refine: refine f → give t (expect Solved) =="
+  let step1 = refineFirstHole "f ?" (levelTemplate hom2Level)
       step2 = refineFirstHole "t"   step1
-  putStrLn (T.unpack (renderResult (checkLevel lvl1 step2)))
-  putStrLn "== level 1 garbage: replace ? with asd (expect TypeError) =="
-  putStrLn (T.unpack (renderResult (checkLevel lvl1 (refineFirstHole "asd" (levelTemplate lvl1)))))
-  putStrLn "== level 1 wrong branch: give s (expect TypeError) =="
-  putStrLn (T.unpack (renderResult (checkLevel lvl1 (refineFirstHole "s" (levelTemplate lvl1)))))
-  putStrLn "== level 1 smart inventory: moves for the template hole =="
-  case checkLevel lvl1 (levelTemplate lvl1) of
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level step2)))
+  putStrLn "== right-unit garbage: replace ? with asd (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level (refineFirstHole "asd" (levelTemplate hom2Level)))))
+  putStrLn "== right-unit wrong branch: give s (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level (refineFirstHole "s" (levelTemplate hom2Level)))))
+  putStrLn "== right-unit smart inventory: moves for the template hole =="
+  case checkLevel hom2Level (levelTemplate hom2Level) of
     Holes (h : _) -> mapM_ (\(l, i) -> putStrLn (T.unpack (l <> "  ↦  " <> i)))
                            (holeActions h)
     r             -> putStrLn ("(expected holes, got " <> T.unpack (renderResult r) <> ")")
-  let lvl2 = head (drop 1 gameLevels)
-  putStrLn "== level 2 tap-to-refine: refine f → give s (expect Solved) =="
+  putStrLn "== left-unit tap-to-refine: refine f → give s (expect Solved) =="
   putStrLn (T.unpack (renderResult
-    (checkLevel lvl2 (refineFirstHole "s" (refineFirstHole "f ?" (levelTemplate lvl2))))))
+    (checkLevel homLeftUnitLevel (refineFirstHole "s" (refineFirstHole "f ?" (levelTemplate homLeftUnitLevel))))))
   putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl
