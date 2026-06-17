@@ -89,6 +89,8 @@ idMorphismLevel = Level
       , "  : hom A x x"
       , "  := \\ t → x"
       ]
+  , levelGoalName  = "my-id"
+  , levelGoalType  = "(A : U) → (x : A) → hom A x x"
   , levelInventory =
       [ "x        : A"
       , "id-hom   : (A : U) → (x : A) → hom A x x"
@@ -122,6 +124,9 @@ constTriangleLevel = Level
       , "  : hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
       , "  := \\ (t , s) → x"
       ]
+  , levelGoalName  = "const-triangle"
+  , levelGoalType  =
+      "(A : U) → (x : A) → hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
   , levelInventory =
       [ "x        : A"
       , "id-hom   : (A : U) → (x : A) → hom A x x"
@@ -157,6 +162,10 @@ hom2Level = Level
       , "  : hom2 A x y y f (id-hom A y) f"
       , "  := \\ (t , s) → f t"
       ]
+  , levelGoalName  = "rut"
+  , levelGoalType  =
+      "(A : U) → (x : A) → (y : A) → (f : hom A x y) \
+      \→ hom2 A x y y f (id-hom A y) f"
   , levelInventory =
       [ "f        : hom A x y"
       , "id-hom   : (A : U) → (x : A) → hom A x x"
@@ -191,6 +200,10 @@ homLeftUnitLevel = Level
       , "  : hom2 A x x y (id-hom A x) f f"
       , "  := \\ (t , s) → f s"
       ]
+  , levelGoalName  = "lut"
+  , levelGoalType  =
+      "(A : U) → (x : A) → (y : A) → (f : hom A x y) \
+      \→ hom2 A x x y (id-hom A x) f f"
   , levelInventory =
       [ "f        : hom A x y"
       , "id-hom   : (A : U) → (x : A) → hom A x x"
@@ -225,6 +238,9 @@ mapPointLevel = Level
       , "  : hom B (g x) (g x)"
       , "  := \\ t → g (x)"
       ]
+  , levelGoalName  = "map-point"
+  , levelGoalType  =
+      "(A : U) → (B : U) → (g : A → B) → (x : A) → hom B (g x) (g x)"
   , levelInventory =
       [ "g        : A → B"
       , "x        : A"
@@ -260,6 +276,10 @@ apHomLevel = Level
       , "  : hom B (g x) (g y)"
       , "  := \\ t → g (f t)"
       ]
+  , levelGoalName  = "ap-hom"
+  , levelGoalType  =
+      "(A : U) → (B : U) → (g : A → B) → (x : A) → (y : A) \
+      \→ (f : hom A x y) → hom B (g x) (g y)"
   , levelInventory =
       [ "g        : A → B"
       , "f        : hom A x y"
@@ -305,6 +325,10 @@ composeLevel = Level
       , "  : hom A x z"
       , "  := first (first (is-segal-A x y z f g))"
       ]
+  , levelGoalName  = "compose"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A x y) → (g : hom A y z) → hom A x z"
   , levelInventory =
       [ "is-segal-A : is-segal A"
       , "is-segal-A x y z f g : is-contr (Σ (h : hom A x z) , hom2 …)"
@@ -347,6 +371,11 @@ composeWitnessLevel = Level
       , "  : hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
       , "  := second (first (is-segal-A x y z f g))"
       ]
+  , levelGoalName  = "compose-witness"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A x y) → (g : hom A y z) \
+      \→ hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
   , levelInventory =
       [ "is-segal-A : is-segal A"
       , "first (is-segal-A x y z f g) : (composite , witness) pair"

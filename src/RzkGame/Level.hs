@@ -38,6 +38,8 @@ data Level = Level
   , levelPrelude    :: Text   -- ^ read-only, pre-checked definitions
   , levelTemplate   :: Text   -- ^ the editable region's starting text (with a @?@)
   , levelSolution   :: Text   -- ^ a reference solution (for self-tests)
+  , levelGoalName   :: Text   -- ^ the definition the player must produce
+  , levelGoalType   :: Text   -- ^ its required (closed) type, enforced on check
   , levelInventory  :: [Text] -- ^ names available to the player
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
@@ -90,9 +92,23 @@ tshow = T.pack . show
 
 -- | Check an editable region against a level. The prelude is prepended, so the
 -- player's text is checked in the context of the given definitions.
+--
+-- The win condition is /not/ merely that the source typechecks with no holes:
+-- an empty editable region would then pass on the prelude alone. Instead the
+-- level pins the definition the player must produce ('levelGoalName') and its
+-- required type ('levelGoalType'), and we append a synthetic check
+--
+-- > #def __rzkgame_goal_check : <levelGoalType> := <levelGoalName>
+--
+-- so the proof only counts as solved when a definition of that name with that
+-- type is in scope and hole-free. The player is free to add helper definitions;
+-- only the named goal is pinned. A missing or mistyped goal makes the synthetic
+-- check fail to typecheck, and is reported like any other error.
 checkLevel :: Level -> Text -> CheckResult
 checkLevel lvl editable =
-  let src = levelPrelude lvl <> "\n" <> editable
+  let goalCheck = "\n#def __rzkgame_goal_check : " <> levelGoalType lvl
+                    <> "\n  := " <> levelGoalName lvl
+      src = levelPrelude lvl <> "\n" <> editable <> goalCheck
   in case parseModule src of
        Left err -> ParseError err
        Right m  ->
