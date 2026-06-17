@@ -12,7 +12,13 @@
     pre { background: #f5f5f5; padding: .6rem; border-radius: 6px;
           overflow-x: auto; white-space: pre-wrap; }
     .goal { background: #eef; }
-    .prelude { color: #555; font-size: .85rem; }
+    /* The prelude is collapsed by default (a <details>) and syntax-highlighted
+       with the same .tok-* classes as the editor; #555 is the plain-token base. */
+    .prelude-wrap { margin: .3rem 0 .6rem; }
+    .prelude-wrap summary { cursor: pointer; font-weight: 600; color: #444;
+                            font-size: .95rem; }
+    .prelude { color: #555; font-size: .85rem; margin-top: .3rem;
+               white-space: pre-wrap; overflow-wrap: break-word; }
     /* L1 editor: a transparent textarea stacked over a highlighted <pre>.
        Both share identical metrics so the coloured layer aligns with typing. */
     .editor-wrap { position: relative; }
@@ -86,7 +92,6 @@
            font-family: ui-monospace, monospace; font-size: .9rem; }
     .ctx .name { color: #225; }
     .ctx .type { color: #555; }
-    .inventory { font-family: ui-monospace, monospace; font-size: .9rem; }
     .muted { color: #888; font-style: italic; }
   </style>
 </head>

@@ -308,8 +308,7 @@ viewModel _ m =
     , H.h3_ [] [ text "Goal" ]
     , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
 
-    , H.h3_ [] [ text "Prelude (given)" ]
-    , H.pre_ [ P.class_ "prelude" ] [ text (ms (levelPrelude lvl)) ]
+    , preludeView lvl
 
     , H.h3_ [] [ text "Your proof" ]
     , editorView (m ^. editable)
@@ -323,13 +322,22 @@ viewModel _ m =
     , H.h3_ [] [ text "Result" ]
     , resultView lvl (m ^. result)
     , advanceView m
-
-    , H.h3_ [] [ text "Inventory" ]
-    , H.ul_ [ P.class_ "inventory" ]
-        [ H.li_ [] [ text (ms i) ] | i <- levelInventory lvl ]
     ]
   where
     lvl = currentLevel m
+
+-- | The level's read-only prelude. It is reference material, not the focus, so
+-- it is collapsed by default; opening it reveals the given definitions,
+-- syntax-highlighted with the same tokeniser as the editor.
+preludeView :: Level -> View Model Action
+preludeView lvl =
+  H.details_ [ P.class_ "prelude-wrap" ]
+    [ H.summary_ [] [ text "Prelude (given)" ]
+    , H.pre_ [ P.class_ "prelude" ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- highlight (levelPrelude lvl)
+        ]
+    ]
 
 -- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
 -- The pre is absolutely positioned to fill the wrapper, which is sized by the
