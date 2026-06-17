@@ -10,6 +10,8 @@ module RzkGame.Content
   , homLeftUnitLevel
   , mapPointLevel
   , apHomLevel
+  , composeLevel
+  , composeWitnessLevel
   ) where
 
 import           Data.Text (Text)
@@ -29,6 +31,8 @@ gameLevels =
   , homLeftUnitLevel
   , mapPointLevel
   , apHomLevel
+  , composeLevel
+  , composeWitnessLevel
   ]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
@@ -44,6 +48,21 @@ prelude = T.unlines
   , "#def hom2 (A : U) (x y z : A)"
   , "  (f : hom A x y) (g : hom A y z) (h : hom A x z) : U"
   , "  := ( (t , s) : Δ²) → A [ s ≡ 0₂ ↦ f t , t ≡ 1₂ ↦ g s , s ≡ t ↦ h s ]"
+  ]
+
+-- | The prelude for the composition levels. It extends the shared one with the
+-- machinery of the Segal condition: a type is Segal when every composable pair
+-- of arrows has a /unique/ filler triangle, i.e. the type of (composite,
+-- witness) pairs is contractible. Composition is then read off the centre of
+-- that contractible type. Following Riehl and Shulman, this is the structure
+-- that makes a type behave like an (∞,1)-category.
+segalPrelude :: Text
+segalPrelude = prelude <> T.unlines
+  [ "#def is-contr (A : U) : U"
+  , "  := Σ (a : A) , (x : A) → a =_{ A } x"
+  , "#def is-segal (A : U) : U"
+  , "  := (x : A) → (y : A) → (z : A) → (f : hom A x y) → (g : hom A y z)"
+  , "   → is-contr (Σ (h : hom A x z) , hom2 A x y z f g h)"
   ]
 
 -- | The warm-up: the identity morphism. A morphism @x → y@ is a path along the
@@ -250,4 +269,92 @@ apHomLevel = Level
       "Applying g along the path f gives a morphism between the images. This is \
       \functoriality: a function carries morphisms to morphisms, here g (f t) \
       \tracing g's image of f."
+  }
+
+-- | Composition in a Segal type. Until now every construction was free; genuine
+-- composition needs a hypothesis. In a Segal type each composable pair @f, g@
+-- has a contractible type of fillers, so @is-segal-A x y z f g@ is a proof that
+-- the type of pairs @(h , triangle)@ is contractible. The composite is the
+-- arrow at the centre of that contraction: the first projection of the first
+-- projection. This is a typed term rather than a tap chain — assemble it from
+-- the inventory and press Check.
+composeLevel :: Level
+composeLevel = Level
+  { levelTitle     = "Composition"
+  , levelIntro     =
+      "Every level so far was free: no hypothesis was needed. Genuine \
+      \composition is different. A Segal type is one where each composable pair \
+      \of arrows has a unique filler triangle, so is-segal-A x y z f g proves \
+      \that the type of pairs (h , triangle) is contractible. Its centre, \
+      \first (is-segal-A x y z f g), is the pair (composite , witness). Take the \
+      \first projection of that pair to get the composite arrow. Type the term \
+      \and press Check."
+  , levelStatement = "hom A x z"
+  , levelPrelude   = segalPrelude
+  , levelTemplate  = T.unlines
+      [ "#def compose"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom A x z"
+      , "  := ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def compose"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom A x z"
+      , "  := first (first (is-segal-A x y z f g))"
+      ]
+  , levelInventory =
+      [ "is-segal-A : is-segal A"
+      , "is-segal-A x y z f g : is-contr (Σ (h : hom A x z) , hom2 …)"
+      , "first      : the centre of a contractible type / first of a pair"
+      , "second     : the second component of a pair"
+      ]
+  , levelConclusion =
+      "The composite g ∘ f is the arrow at the centre of the contractible space \
+      \of fillers. The Segal condition is exactly what makes this arrow exist \
+      \and be well-defined. Next: recover the triangle that witnesses it."
+  }
+
+-- | The witness triangle for the composite. The same centre of contraction
+-- carries, in its /second/ component, the 2-simplex showing that the composite
+-- really is a composite of @f@ and @g@. The goal repeats the composite term
+-- from the previous level as the triangle's diagonal, so the connection is
+-- visible: this triangle's hypotenuse is exactly the arrow just built.
+composeWitnessLevel :: Level
+composeWitnessLevel = Level
+  { levelTitle     = "The composition witness"
+  , levelIntro     =
+      "Building the composite arrow was only half of the centre of contraction. \
+      \Its second component is the triangle witnessing that the arrow really is \
+      \the composite of f and g. The goal's diagonal is the composite you built \
+      \last time. Take the second projection of the centre to recover its \
+      \witness."
+  , levelStatement = "hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
+  , levelPrelude   = segalPrelude
+  , levelTemplate  = T.unlines
+      [ "#def compose-witness"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
+      , "  := ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def compose-witness"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
+      , "  := second (first (is-segal-A x y z f g))"
+      ]
+  , levelInventory =
+      [ "is-segal-A : is-segal A"
+      , "first (is-segal-A x y z f g) : (composite , witness) pair"
+      , "first      : the composite arrow (the pair's first component)"
+      , "second     : the witness triangle (the pair's second component)"
+      ]
+  , levelConclusion =
+      "The composite and its witnessing triangle are the two halves of one \
+      \centre of contraction. Together they say: in a Segal type, composition \
+      \exists and the triangle proving it is there for free."
   }
