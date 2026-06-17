@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | The L0 user interface: a textarea for the editable region, a Check button,
 -- and a panel that renders the result — each unsolved hole's goal and
@@ -132,7 +133,14 @@ resultView :: CheckResult -> View Model Action
 resultView = \case
   NotChecked   -> H.pre_ [] [ text "(press Check)" ]
   ParseError e -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
-  TypeError e  -> H.pre_ [ P.class_ "err" ] [ text (ms ("Type error:\n" <> e)) ]
+  -- The rzk type-error formatter is verbose (a "when typechecking …" trace per
+  -- lambda layer). Lead with a friendly line and keep the full report in a
+  -- height-capped, scrollable box so it does not run down the page.
+  TypeError e  ->
+    H.div_ [ P.class_ "err" ]
+      [ H.p_  [] [ text "This proof doesn't typecheck yet:" ]
+      , H.pre_ [ P.class_ "errdump" ] [ text (ms e) ]
+      ]
   Solved       ->
     H.div_ [ P.class_ "ok" ]
       [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ]
@@ -141,5 +149,41 @@ resultView = \case
   Holes hs ->
     H.div_ [ P.class_ "holes" ]
       ( H.p_ [] [ text (ms (T.pack (show (length hs)) <> " hole(s) remaining")) ]
-      : [ H.pre_ [ P.class_ "hole" ] [ text (ms h) ] | h <- hs ]
+      : map holeView hs
       )
+
+-- | Render one hole as a stack of labelled panels: goal, then any local
+-- hypotheses, cube variables, and tope assumptions.
+holeView :: HoleView -> View Model Action
+holeView HoleView{..} =
+  H.div_ [ P.class_ "hole" ] $
+    [ H.div_ [ P.class_ "hole-head" ]
+        [ text (maybe "Hole" (\n -> "Hole " <> ms n) hvName) ]
+    , panel "Goal" [ H.pre_ [ P.class_ "goal" ] [ text (ms hvGoal) ] ]
+    ]
+    <> bindings "Context" hvContext
+    <> bindings "Cube variables" hvCubeVars
+    <> topes hvTopes
+  where
+    panel title body = H.div_ [ P.class_ "hole-panel" ]
+      ( H.div_ [ P.class_ "hole-label" ] [ text title ] : body )
+
+    bindings _ []      = []
+    bindings title es  =
+      [ panel title
+          [ H.ul_ [ P.class_ "ctx" ]
+              [ H.li_ []
+                  [ H.span_ [ P.class_ "name" ] [ text (ms n) ]
+                  , text " : "
+                  , H.span_ [ P.class_ "type" ] [ text (ms ty) ]
+                  ]
+              | (n, ty) <- es
+              ]
+          ]
+      ]
+
+    topes []  = []
+    topes ts  =
+      [ panel "Topes"
+          [ H.ul_ [ P.class_ "ctx" ] [ H.li_ [] [ text (ms t) ] | t <- ts ] ]
+      ]
