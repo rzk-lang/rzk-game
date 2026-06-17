@@ -17,7 +17,8 @@ import qualified Miso.Html.Property as P
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
-import           Data.Maybe         (mapMaybe)
+import           Control.Monad      (when)
+import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
@@ -67,8 +68,9 @@ data Action
   | Check
   | Reset
   | SelectLevel Int
-  | LoadProgress       -- ^ dispatched at mount: read the solved set from storage
+  | Init                    -- ^ dispatched at mount: load saved progress + draft
   | SetSolved (Set Int)
+  | ApplyText Int MisoString  -- ^ install a level's restored draft (or template)
   deriving (Eq)
 
 main :: IO ()
@@ -144,7 +146,7 @@ hsSelftest = do
 
 app :: App Model Action
 app = (component initModel updateModel viewModel)
-  { mount = Just LoadProgress }   -- seed the solved set from localStorage
+  { mount = Just Init }   -- seed the solved set and the level-0 draft from storage
 
 initModel :: Model
 initModel = loadLevel 0
@@ -180,13 +182,50 @@ readProgress = maybe Set.empty decodeSolved <$> getLocalStorage progressKey
 saveProgress :: Set Int -> IO ()
 saveProgress = setLocalStorage progressKey . encodeSolved
 
+-- | Per-level draft storage. Each level's in-progress text is saved under its
+-- own key, so the raw source needs no escaping (unlike a single packed value).
+-- A draft for a level no longer in the list simply lingers, harmlessly unread.
+draftKey :: Int -> MisoString
+draftKey i = "rzk-game-draft-" <> ms (show i)
+
+-- | Save / clear a level's draft.
+saveDraft :: Int -> MisoString -> IO ()
+saveDraft i = setLocalStorage (draftKey i)
+
+removeDraft :: Int -> IO ()
+removeDraft = removeLocalStorage . draftKey
+
+-- | Read a level's saved draft, falling back to its template when none is
+-- stored, and return the action that installs it. The index is carried so the
+-- update can ignore a stale read after a quick level switch.
+loadDraftAction :: Int -> IO Action
+loadDraftAction i =
+  ApplyText i . fromMaybe (ms (levelTemplate (nthLevel i))) <$> getLocalStorage (draftKey i)
+
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
-  SetEditable s -> editable .= s
-  SelectLevel i -> reload i
-  Reset         -> use levelIx >>= reload
-  LoadProgress  -> io (SetSolved <$> readProgress)
+  SetEditable s -> do
+    editable .= s
+    i <- use levelIx
+    io_ (saveDraft i s)
+  SelectLevel i -> do
+    reload i
+    io (loadDraftAction i)   -- override the template with a saved draft, if any
+  Reset         -> do
+    i <- use levelIx
+    reload i
+    io_ (removeDraft i)      -- drop the draft so the template stays on next load
+  Init          -> do
+    io (SetSolved <$> readProgress)
+    i <- use levelIx
+    io (loadDraftAction i)
   SetSolved s   -> solved .= s
+  ApplyText i s -> do
+    -- Ignore a draft that arrived after the player moved to another level.
+    cur <- use levelIx
+    when (cur == i) $ do
+      editable .= s
+      result   .= checkLevel (nthLevel i) (fromMisoString s)
   Refine ins    -> do
     i <- use levelIx
     e <- use editable
@@ -194,6 +233,7 @@ updateModel = \case
         res = checkLevel (nthLevel i) e'
     editable .= ms e'
     result   .= res
+    io_ (saveDraft i (ms e'))
     recordSolved i res
   Check         -> do
     i <- use levelIx
@@ -203,8 +243,9 @@ updateModel = \case
     recordSolved i res
   where
     -- Load a level's template into the model and check it, so the focused hole
-    -- and its moves show without a first manual Check. The solved set is left
-    -- untouched, so switching levels preserves progress.
+    -- and its moves show without a first manual Check (and immediately, before
+    -- any saved draft is read back). The solved set is left untouched, so
+    -- switching levels preserves progress.
     reload i = do
       levelIx  .= i
       editable .= ms (levelTemplate (nthLevel i))
