@@ -23,15 +23,48 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      # Install Nix with a single-user, runner-writable /nix store. This is the
+      # installer cache-nix-action is built to pair with: the DeterminateSystems
+      # installer uses a daemon and a read-only store, which makes the cache's
+      # tar restore fail ("Cannot mkdir/Cannot open"), so the toolchain cache
+      # never actually loads. nix-quick-install avoids that.
       - name: ❄️ Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
 
-      - name: 💾 Cache the wasm cabal store and Hackage index
+      # Cache the realised nix store — the ghc-wasm toolchain (GHC wasm backend,
+      # wasm-opt, wasm-tools, node). Realising it from scratch is the single
+      # biggest cost (~3.5 min every run); it only changes when the flake inputs
+      # do, so key on flake.nix/flake.lock. With a stable key the cache is saved
+      # once and reused; GitHub's per-repo LRU bounds the overall budget.
+      #
+      # The "nix2-" generation: the first cache (saved under the old
+      # DeterminateSystems installer) was incomplete — it missed the realised
+      # wasm32-wasi-ghc output, so nix develop rebuilt the toolchain every run
+      # while still paying to restore the cache. nix-quick-install puts the whole
+      # closure in a runner-writable store that cache-nix-action can capture;
+      # bumping the key prefix forces one clean re-save. Bump it again if the
+      # restored store ever stops containing the realised toolchain.
+      - name: ❄️ Cache the nix store (wasm toolchain)
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix2-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix2-${{ runner.os }}-
+
+      # Cache the wasm cabal store (built rzk/miso/deps), the Hackage index, and
+      # the cloned source-repository-packages (so rzk's full-history clone, ~40 s,
+      # is skipped). Keyed on the files that determine the pins; a pin change
+      # rebuilds only what actually differs, the prefix restore-key reusing the
+      # rest of the store.
+      - name: 💾 Cache the wasm cabal store, index, and SRP clones
         uses: actions/cache@v4
         with:
           path: |
             .wasm-store
             .cabal-wasm
+            dist-newstyle/src
           key: wasm-store-${{ runner.os }}-${{ hashFiles('cabal.project', 'rzk-game.cabal', 'flake.lock') }}
           restore-keys: |
             wasm-store-${{ runner.os }}-
