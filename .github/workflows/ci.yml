@@ -26,12 +26,31 @@ jobs:
       - name: ❄️ Install Nix
         uses: DeterminateSystems/nix-installer-action@main
 
-      - name: 💾 Cache the wasm cabal store and Hackage index
+      # Cache the realised nix store — the ghc-wasm toolchain (GHC wasm backend,
+      # wasm-opt, wasm-tools, node). Realising it from scratch is the single
+      # biggest cost (~3.5 min every run); it only changes when the flake inputs
+      # do, so key on flake.nix/flake.lock. With a stable key the cache is saved
+      # once and reused; GitHub's per-repo LRU bounds the overall budget. If the
+      # nix + cabal caches together start evicting each other, add
+      # gc-max-store-size-linux here to trim the saved store.
+      - name: ❄️ Cache the nix store (wasm toolchain)
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+
+      # Cache the wasm cabal store (built rzk/miso/deps), the Hackage index, and
+      # the cloned source-repository-packages (so rzk's full-history clone, ~40 s,
+      # is skipped). Keyed on the files that determine the pins; a pin change
+      # rebuilds only what actually differs, the prefix restore-key reusing the
+      # rest of the store.
+      - name: 💾 Cache the wasm cabal store, index, and SRP clones
         uses: actions/cache@v4
         with:
           path: |
             .wasm-store
             .cabal-wasm
+            dist-newstyle/src
           key: wasm-store-${{ runner.os }}-${{ hashFiles('cabal.project', 'rzk-game.cabal', 'flake.lock') }}
           restore-keys: |
             wasm-store-${{ runner.os }}-
