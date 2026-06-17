@@ -7,11 +7,12 @@
 -- wasm32-wasi (several minutes the first time).
 packages: .
 
--- rzk: holes + structured goal/context query (#236–#240).
+-- rzk: holes + structured goal/context query (#236–#240) plus pattern
+-- binder-name restoration in goals/holes (#242).
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 33e4fe5e4b839e30200ed30050c5f248252ed6a5
+  tag: fffe5bc9
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.

@@ -67,6 +67,11 @@ hsSelftest = do
   putStrLn (T.unpack (renderResult (checkLevel theLevel (refineFirstHole "asd" (levelTemplate theLevel)))))
   putStrLn "== wrong branch: give s (expect TypeError) =="
   putStrLn (T.unpack (renderResult (checkLevel theLevel (refineFirstHole "s" (levelTemplate theLevel)))))
+  putStrLn "== smart inventory: moves for the template hole =="
+  case checkLevel theLevel (levelTemplate theLevel) of
+    Holes (h : _) -> mapM_ (\(l, i) -> putStrLn (T.unpack (l <> "  ↦  " <> i)))
+                           (holeActions h)
+    r             -> putStrLn ("(expected holes, got " <> T.unpack (renderResult r) <> ")")
 #endif
 #endif
 
@@ -74,7 +79,8 @@ app :: App Model Action
 app = component initModel updateModel viewModel
 
 initModel :: Model
-initModel = Model (ms (levelTemplate theLevel)) NotChecked
+initModel = Model (ms template) (checkLevel theLevel template)
+  where template = levelTemplate theLevel
 
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
@@ -86,7 +92,7 @@ updateModel = \case
     result   .= checkLevel theLevel e'
   Reset         -> do
     editable .= ms (levelTemplate theLevel)
-    result   .= NotChecked
+    result   .= checkLevel theLevel (levelTemplate theLevel)
   Check         -> do
     e <- use editable
     result .= checkLevel theLevel (fromMisoString e)
@@ -111,10 +117,7 @@ viewModel _ m =
         , H.onInput SetEditable
         ]
     , H.h3_ [] [ text "Moves" ]
-    , H.div_ [ P.class_ "actions" ]
-        [ H.button_ [ P.class_ "refine", H.onClick (Refine ins) ] [ text (ms label) ]
-        | (label, ins) <- levelActions theLevel
-        ]
+    , movesView m
 
     , H.div_ [ P.class_ "buttons" ]
         [ H.button_ [ H.onClick Check ] [ text "Check" ]
@@ -128,6 +131,20 @@ viewModel _ m =
     , H.ul_ [ P.class_ "inventory" ]
         [ H.li_ [] [ text (ms i) ] | i <- levelInventory theLevel ]
     ]
+
+-- | The smart-inventory moves for the focused hole (the first unsolved one),
+-- derived from the current source and result. There is nothing to refine when
+-- the proof is solved, errs, or has not been checked.
+movesView :: Model -> View Model Action
+movesView m =
+  case m ^. result of
+    Holes (h : _)
+      | moves@(_ : _) <- holeActions h ->
+          H.div_ [ P.class_ "actions" ]
+            [ H.button_ [ P.class_ "refine", H.onClick (Refine ins) ] [ text (ms label) ]
+            | (label, ins) <- moves
+            ]
+    _ -> H.p_ [ P.class_ "muted" ] [ text "Moves appear here when a hole is in focus." ]
 
 resultView :: CheckResult -> View Model Action
 resultView = \case
