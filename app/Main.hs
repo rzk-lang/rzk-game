@@ -70,7 +70,7 @@ hsSelftest = do
   putStrLn "== smart inventory: moves for the template hole =="
   case checkLevel theLevel (levelTemplate theLevel) of
     Holes (h : _) -> mapM_ (\(l, i) -> putStrLn (T.unpack (l <> "  ↦  " <> i)))
-                           (holeActions (levelTemplate theLevel) h)
+                           (holeActions h)
     r             -> putStrLn ("(expected holes, got " <> T.unpack (renderResult r) <> ")")
 #endif
 #endif
@@ -139,7 +139,7 @@ movesView :: Model -> View Model Action
 movesView m =
   case m ^. result of
     Holes (h : _)
-      | moves@(_ : _) <- holeActions (fromMisoString (m ^. editable)) h ->
+      | moves@(_ : _) <- holeActions h ->
           H.div_ [ P.class_ "actions" ]
             [ H.button_ [ P.class_ "refine", H.onClick (Refine ins) ] [ text (ms label) ]
             | (label, ins) <- moves

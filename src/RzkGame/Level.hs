@@ -121,16 +121,14 @@ refineFirstHole insertion src =
 --
 -- Two sources feed the list. Term hypotheses come from the hole's context: a
 -- function-like one is offered as @name ?@ (apply, leaving a hole for the
--- argument), an ordinary one as @name@ (give it directly). Cube coordinates are
--- recovered from the lambda pattern in the player's source — rzk folds a pair
--- pattern into a single cube point and reports its components as @π₁/π₂@
--- projections, so the original coordinate names survive only in the source.
+-- argument), an ordinary one as @name@ (give it directly). Cube coordinates come
+-- from the hole's cube variables: rzk shows a pattern-bound point as its pattern
+-- (e.g. @(t, s) : 2 × 2@), so each coordinate is one component name of that
+-- binder.
 --
--- Moves whose inserted name occurs in the goal are offered first. (Once rzk
--- preserves pattern binder names, the coordinates too will appear in the goal
--- and rank naturally.)
-holeActions :: Text -> HoleView -> [(Text, Text)]
-holeActions src HoleView{..} = sortOn relevance (termMoves <> cubeMoves)
+-- Moves whose inserted name occurs in the goal are offered first.
+holeActions :: HoleView -> [(Text, Text)]
+holeActions HoleView{..} = sortOn relevance (termMoves <> cubeMoves)
   where
     termMoves =
       [ if applicable ty then ("refine " <> n, n <> " ?") else ("give " <> n, n)
@@ -142,24 +140,20 @@ holeActions src HoleView{..} = sortOn relevance (termMoves <> cubeMoves)
     -- one). This is a heuristic, refined later if HoleInfo carries arity.
     applicable ty = "→" `T.isInfixOf` ty || "hom" `T.isInfixOf` ty
 
-    cubeMoves = [ ("give " <> n, n) | n <- binderNamesFromSource src ]
+    -- Each cube variable's binder is shown as its pattern; the coordinates are
+    -- its component names (a plain binder contributes just itself).
+    cubeMoves =
+      [ ("give " <> n, n) | (binder, _) <- hvCubeVars, n <- patternNames binder ]
 
     -- 0 sorts before 1: a move whose head name appears in the goal comes first.
     relevance (_, ins)
       | T.takeWhile (/= ' ') ins `T.isInfixOf` hvGoal = 0 :: Int
       | otherwise                                     = 1
 
--- | The variable names bound by the first lambda pattern in the source, e.g.
--- @\\ (t , s) → …@ yields @["t", "s"]@. Used to offer the cube coordinates as
--- moves while rzk still reports them as projections (see 'holeActions').
-binderNamesFromSource :: Text -> [Text]
-binderNamesFromSource src =
-  case T.breakOn "\\" src of
-    (_, rest)
-      | T.null rest -> []
-      | otherwise   ->
-          let pat = fst (T.breakOn "→" (T.replace "->" "→" (T.drop 1 rest)))
-          in filter isIdent (T.split (`elem` (" \t\r\n(),|" :: String)) pat)
+-- | The atomic names of a (possibly pattern) binder as rzk renders it, e.g.
+-- @(t, s)@ yields @["t", "s"]@ and a plain @t@ yields @["t"]@.
+patternNames :: Text -> [Text]
+patternNames = filter isIdent . T.split (`elem` (" \t\r\n(),|" :: String))
   where
     isIdent w = not (T.null w) && w /= "_" && isAlpha (T.head w)
 
