@@ -115,6 +115,19 @@ hsSelftest = do
     Holes (h : _) -> mapM_ (\(l, i) -> putStrLn (T.unpack (l <> "  ↦  " <> i)))
                            (holeActions h)
     r             -> putStrLn ("(expected holes, got " <> T.unpack (renderResult r) <> ")")
+  putStrLn "== smart inventory: moves for every level's template hole =="
+  let dumpMoves src lvl = case checkLevel lvl src of
+        Holes (h : _) -> mapM_ (\(l, i) -> putStrLn ("   " <> T.unpack (l <> "  ↦  " <> i)))
+                               (holeActions h)
+        r             -> putStrLn ("   (no holes: " <> T.unpack (renderResult r) <> ")")
+  flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(n, lvl) -> do
+    putStrLn ("-- level " <> show n <> " (" <> T.unpack (levelTitle lvl) <> ") --")
+    dumpMoves (levelTemplate lvl) lvl
+  putStrLn "== smart inventory: inner-hole moves after the first refine =="
+  putStrLn "-- right-unit after refine f --"
+  dumpMoves (refineFirstHole "f ?" (levelTemplate hom2Level)) hom2Level
+  putStrLn "-- ap-hom after refine f --"
+  dumpMoves (refineFirstHole "f ?" (levelTemplate apHomLevel)) apHomLevel
   putStrLn "== left-unit tap-to-refine: refine f → give s (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (checkLevel homLeftUnitLevel (refineFirstHole "s" (refineFirstHole "f ?" (levelTemplate homLeftUnitLevel))))))
@@ -130,6 +143,15 @@ hsSelftest = do
   putStrLn "== compose-witness: give second (first (is-segal-A x y z f g)) (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (checkLevel composeWitnessLevel (refineFirstHole "second (first (is-segal-A x y z f g))" (levelTemplate composeWitnessLevel)))))
+  -- The composition levels are now tappable: drop the projection spine offered by
+  -- the smart inventory, then fill its five argument holes one tap each.
+  let tapChain lvl insertions = checkLevel lvl (foldl (flip refineFirstHole) (levelTemplate lvl) insertions)
+  putStrLn "== compose tap chain: spine then x y z f g (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain composeLevel ["first (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
+  putStrLn "== compose-witness tap chain: spine then x y z f g (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain composeWitnessLevel ["second (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
   putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl

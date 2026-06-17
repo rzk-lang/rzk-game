@@ -18,8 +18,7 @@ module RzkGame.Level
   , renderResult
   ) where
 
-import           Data.Char            (isAlpha)
-import           Data.List            (sortOn)
+import           Data.List            (nub)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 
@@ -62,6 +61,7 @@ data HoleView = HoleView
   , hvContext  :: [(Text, Text)] -- ^ term hypotheses, as @(name, type)@
   , hvCubeVars :: [(Text, Text)] -- ^ cube variables, as @(name, type)@
   , hvTopes    :: [Text]         -- ^ tope assumptions
+  , hvMoves    :: [Text]         -- ^ tap-to-fill insertions (rzk's @holeCandidates@)
   } deriving (Eq, Show)
 
 -- | Convert rzk's structured 'HoleInfo' into a display-ready 'HoleView'. Each
@@ -76,6 +76,7 @@ toHoleView HoleInfo{..} = HoleView
   , hvContext  = map entry holeTermVars
   , hvCubeVars = map entry holeCubeVars
   , hvTopes    = map tshow holeTopes
+  , hvMoves    = map (humanizeProjections . tshow) holeCandidates
   }
   where
     entry e = (tshow (holeEntryName e), tshow (holeEntryType e))
@@ -115,47 +116,21 @@ refineFirstHole insertion src =
     (_, after) | T.null after -> src
     (before, after)           -> before <> insertion <> T.drop 1 after
 
--- | Smart inventory: the tap-to-refine moves offered for a focused hole,
--- derived from what is in scope and ranked by relevance to the goal. This
--- replaces hand-authored per-level actions.
---
--- Two sources feed the list. Term hypotheses come from the hole's context: a
--- function-like one is offered as @name ?@ (apply, leaving a hole for the
--- argument), an ordinary one as @name@ (give it directly). Cube coordinates come
--- from the hole's cube variables: rzk shows a pattern-bound point as its pattern
--- (e.g. @(t, s) : 2 × 2@), so each coordinate is one component name of that
--- binder.
---
--- Moves whose inserted name occurs in the goal are offered first.
+-- | Smart inventory: the tap-to-fill moves offered for a focused hole. Each is
+-- an elimination spine over a local hypothesis whose type fits the goal, with
+-- any applied arguments left as holes — computed type-directed by rzk (see
+-- 'allEliminationsInto' / @holeCandidates@) rather than by string heuristics
+-- here. Tapping a move drops it onto the first @?@; the holes it carries become
+-- the next moves. We keep rzk's order (innermost hypotheses first) and only drop
+-- duplicates; the label is the insertion itself, prefixed with @give@.
 holeActions :: HoleView -> [(Text, Text)]
-holeActions HoleView{..} = sortOn relevance (termMoves <> cubeMoves)
-  where
-    termMoves =
-      [ if applicable ty then ("refine " <> n, n <> " ?") else ("give " <> n, n)
-      | (n, ty) <- hvContext
-      , ty /= "U"   -- a type parameter is rarely the term that fills a hole
-      ]
-    -- We cannot read arity off the rendered type, so treat a hypothesis as
-    -- applicable when its type is a function arrow or a hom (which unfolds to
-    -- one). This is a heuristic, refined later if HoleInfo carries arity.
-    applicable ty = "→" `T.isInfixOf` ty || "hom" `T.isInfixOf` ty
+holeActions HoleView{..} = [ ("give " <> m, m) | m <- nub hvMoves ]
 
-    -- Each cube variable's binder is shown as its pattern; the coordinates are
-    -- its component names (a plain binder contributes just itself).
-    cubeMoves =
-      [ ("give " <> n, n) | (binder, _) <- hvCubeVars, n <- patternNames binder ]
-
-    -- 0 sorts before 1: a move whose head name appears in the goal comes first.
-    relevance (_, ins)
-      | T.takeWhile (/= ' ') ins `T.isInfixOf` hvGoal = 0 :: Int
-      | otherwise                                     = 1
-
--- | The atomic names of a (possibly pattern) binder as rzk renders it, e.g.
--- @(t, s)@ yields @["t", "s"]@ and a plain @t@ yields @["t"]@.
-patternNames :: Text -> [Text]
-patternNames = filter isIdent . T.split (`elem` (" \t\r\n(),|" :: String))
-  where
-    isIdent w = not (T.null w) && w /= "_" && isAlpha (T.head w)
+-- | Render rzk's projection notation (@π₁@ / @π₂@) as the ASCII @first@ /
+-- @second@ the levels use in prose and reference solutions, so a tapped move
+-- reads the same as the text the player would type. Both parse in rzk.
+humanizeProjections :: Text -> Text
+humanizeProjections = T.replace "π₁" "first" . T.replace "π₂" "second"
 
 -- | A plain-text rendering of a result, for self-tests and logs.
 renderResult :: CheckResult -> Text
