@@ -13,8 +13,28 @@
           overflow-x: auto; white-space: pre-wrap; }
     .goal { background: #eef; }
     .prelude { color: #555; font-size: .85rem; }
-    .editor { width: 100%; font-family: ui-monospace, monospace;
-              font-size: 1rem; padding: .5rem; box-sizing: border-box; }
+    /* L1 editor: a transparent textarea stacked over a highlighted <pre>.
+       Both share identical metrics so the coloured layer aligns with typing. */
+    .editor-wrap { position: relative; }
+    .editor, .editor-hl {
+      margin: 0; width: 100%; box-sizing: border-box;
+      font-family: ui-monospace, monospace; font-size: 1rem; line-height: 1.45;
+      padding: .5rem; border: 1px solid #ccc;
+      white-space: pre-wrap; overflow-wrap: break-word; tab-size: 2;
+    }
+    .editor {
+      position: relative; z-index: 1; resize: vertical;
+      color: transparent; background: transparent; caret-color: #000;
+    }
+    .editor-hl {
+      position: absolute; inset: 0; z-index: 0; overflow: hidden;
+      pointer-events: none; border-color: transparent; background: #fff;
+      color: #222;
+    }
+    .tok-kw      { color: #8250df; font-weight: 600; }
+    .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
+    .tok-comment { color: #6a737d; font-style: italic; }
+    .tok-op      { color: #0a7d62; }
     .levels { margin: .2rem 0 .8rem; display: flex; flex-wrap: wrap; gap: .4rem; }
     .levels button { margin: 0; background: #f0f0f0; border: 1px solid #ccc;
                      border-radius: 6px; cursor: pointer; }

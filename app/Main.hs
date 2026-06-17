@@ -20,6 +20,7 @@ import           Miso.String        (MisoString, fromMisoString, ms)
 import qualified Data.Text          as T
 
 import           RzkGame.Content    (gameLevels)
+import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
 -- | UI state: which level is being played, the player's current text, and the
@@ -97,6 +98,10 @@ hsSelftest = do
   putStrLn "== level 2 tap-to-refine: refine f → give s (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (checkLevel lvl2 (refineFirstHole "s" (refineFirstHole "f ?" (levelTemplate lvl2))))))
+  putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
+  let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
+                       == levelTemplate lvl
+  putStrLn (if all lossless gameLevels then "lossless: OK" else "LOSSLESS FAILED")
 #endif
 #endif
 
@@ -152,12 +157,7 @@ viewModel _ m =
     , H.pre_ [ P.class_ "prelude" ] [ text (ms (levelPrelude lvl)) ]
 
     , H.h3_ [] [ text "Your proof" ]
-    , H.textarea_
-        [ P.class_ "editor"
-        , P.rows_ "5"
-        , P.value_ (m ^. editable)
-        , H.onInput SetEditable
-        ]
+    , editorView (m ^. editable)
     , H.h3_ [] [ text "Moves" ]
     , movesView m
     , H.div_ [ P.class_ "buttons" ]
@@ -175,6 +175,26 @@ viewModel _ m =
     ]
   where
     lvl = currentLevel m
+
+-- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
+-- The pre is absolutely positioned to fill the wrapper, which is sized by the
+-- textarea, so the two stay the same height (even on manual resize). Both share
+-- identical metrics in CSS, so the coloured layer lines up with the text the
+-- player types. The tokeniser is lossless, so no character is dropped or added.
+editorView :: MisoString -> View Model Action
+editorView code =
+  H.div_ [ P.class_ "editor-wrap" ]
+    [ H.pre_ [ P.class_ "editor-hl" ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- highlight (fromMisoString code)
+        ]
+    , H.textarea_
+        [ P.class_ "editor"
+        , P.rows_ "6"
+        , P.value_ code
+        , H.onInput SetEditable
+        ]
+    ]
 
 -- | The level selector: one button per level, the current one highlighted.
 levelPicker :: Model -> View Model Action

@@ -17,6 +17,7 @@ library
   exposed-modules:
     RzkGame.Level
     RzkGame.Content
+    RzkGame.Highlight
   build-depends:
       base
     , text
