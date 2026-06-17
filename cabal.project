@@ -14,7 +14,7 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: bd140a6c5354d3f8dd7b3751e6b303558e7cd2f7
+  tag: 616841e6c82f2b7c8c5c7d376476a8671030a46b
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
