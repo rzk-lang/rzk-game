@@ -7,13 +7,14 @@
 -- wasm32-wasi (several minutes the first time).
 packages: .
 
--- rzk: holes + structured goal/context query (#236–#240) plus pattern
--- binder-name restoration in goals/holes (#242). Pinned to the #242 merge
--- commit on develop (a stable ref; the old branch-tip SHA went away on merge).
+-- rzk: holes + structured goal/context query (#236–#240), pattern binder-name
+-- restoration (#242), structured hole JSON (#243), and per-hole elimination
+-- candidates (holeCandidates). TEMP pin to the holes-entry-signature branch tip
+-- while its PR is in review; re-pin to the merge commit on develop once merged.
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 79e1d372
+  tag: bd140a6c5354d3f8dd7b3751e6b303558e7cd2f7
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
