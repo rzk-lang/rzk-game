@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rzk Game</title>
+  <!-- Self-hosted KaTeX + marked for Markdown/TeX prose (see prose.js). These
+       regular scripts run before the deferred app module, so globalThis.renderProse
+       is defined by the time the wasm app loads a level. -->
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/marked/marked.min.js"></script>
+  <script src="prose.js"></script>
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
@@ -13,6 +20,12 @@
     h1, h2, h3, p, summary, .nav-current {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
+    /* Markdown/TeX prose (rendered to HTML by prose.js, injected as innerHTML). */
+    .prose > :first-child { margin-top: 0; }
+    .prose > :last-child { margin-bottom: 0; }
+    .prose code { font-family: ui-monospace, monospace; font-size: .9em;
+                  background: #f0f0f0; padding: .05rem .25rem; border-radius: 3px; }
+    .prose .katex-display { margin: .5rem 0; }
     header.game { border-bottom: 1px solid #eee; margin-bottom: 1rem;
                   padding-bottom: .5rem; }
     header.game h1 { margin: 0; font-size: 1.5rem; }

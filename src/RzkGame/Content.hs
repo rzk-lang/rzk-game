@@ -73,10 +73,7 @@ idMorphismLevel :: Level
 idMorphismLevel = Level
   { levelTitle     = "The identity morphism"
   , levelIntro     =
-      "A morphism x → y in A is a path along the directed interval Δ¹. The \
-      \simplest one is the identity: the morphism from x to itself that just \
-      \stays put. Both endpoints of the path are x, so a constant path will do. \
-      \Build it."
+      "A morphism $x \\to y$ in $A$ is a path along the directed interval $\\Delta^1$. The simplest one is the identity: the morphism from $x$ to itself that just stays put. Both endpoints of the path are $x$, so a constant path will do. Build it."
   , levelStatement = "hom A x x"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -97,8 +94,7 @@ idMorphismLevel = Level
       , "λ-intro  : introduce the interval coordinate"
       ]
   , levelConclusion =
-      "The constant path is the identity morphism. Both endpoints ask for x, so \
-      \x itself fills the hole — no need to move along the interval at all."
+      "The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all."
   }
 
 -- | The constant 2-simplex: every edge is the identity at a single point @x@.
@@ -109,9 +105,7 @@ constTriangleLevel :: Level
 constTriangleLevel = Level
   { levelTitle     = "The constant triangle"
   , levelIntro     =
-      "A hom2 is a triangle: a map out of the 2-simplex Δ². The simplest one is \
-      \constant — every edge is the identity at a single point x. Introduce the \
-      \two coordinates, then find the point of A that sits on all three edges."
+      "A `hom2` is a triangle: a map out of the 2-simplex $\\Delta^2$. The simplest one is constant — every edge is the identity at a single point $x$. Introduce the two coordinates, then find the point of $A$ that sits on all three edges."
   , levelStatement = "hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -133,9 +127,7 @@ constTriangleLevel = Level
       , "λ-intro  : introduce the two cube coordinates"
       ]
   , levelConclusion =
-      "Every boundary asked for x, so the constant function fills the whole \
-      \triangle. In the next levels one edge becomes a genuine morphism, and the \
-      \point has to vary along a coordinate."
+      "Every boundary asked for $x$, so the constant function fills the whole triangle. In the next levels one edge becomes a genuine morphism, and the point has to vary along a coordinate."
   }
 
 -- | The right-unit degenerate triangle. Given @f : x → y@, build the 2-simplex
@@ -145,11 +137,7 @@ hom2Level :: Level
 hom2Level = Level
   { levelTitle     = "The right-unit triangle"
   , levelIntro     =
-      "Now an edge becomes a genuine morphism. The hypotenuse of a hom2 is the \
-      \composite of its other two edges. Most triangles need A to be Segal — but \
-      \some are free. Given f : x → y, the triangle whose right edge is the \
-      \identity at y has f itself as its hypotenuse. This time the point must \
-      \vary along the first coordinate. Build it."
+      "Now an edge becomes a genuine morphism. The hypotenuse of a `hom2` is the composite of its other two edges. Most triangles need $A$ to be Segal — but some are free. Given $f : x \\to y$, the triangle whose right edge is the identity at $y$ has $f$ itself as its hypotenuse. This time the point must vary along the first coordinate. Build it."
   , levelStatement = "hom2 A x y y f (id-hom A y) f"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -172,9 +160,7 @@ hom2Level = Level
       , "λ-intro  : introduce the cube coordinates"
       ]
   , levelConclusion =
-      "The degenerate triangle is just f ignoring the second coordinate. \
-      \Reusing an existing edge, reparametrised, is the bread and butter of \
-      \simplicial proofs."
+      "The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs."
   }
 
 -- | The left-unit degenerate triangle: the mirror of the right-unit one. Given
@@ -185,9 +171,7 @@ homLeftUnitLevel :: Level
 homLeftUnitLevel = Level
   { levelTitle     = "The left-unit triangle"
   , levelIntro     =
-      "Now the mirror image. Given f : x → y, the triangle whose left edge is \
-      \the identity at x also has f as its hypotenuse — but this time the \
-      \degenerate copy of f must vary in the other coordinate. Build it."
+      "Now the mirror image. Given $f : x \\to y$, the triangle whose left edge is the identity at $x$ also has $f$ as its hypotenuse — but this time the degenerate copy of $f$ must vary in the other coordinate. Build it."
   , levelStatement = "hom2 A x x y (id-hom A x) f f"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -210,8 +194,7 @@ homLeftUnitLevel = Level
       , "λ-intro  : introduce the cube coordinates"
       ]
   , levelConclusion =
-      "The same edge f, reparametrised in the other coordinate. The right-unit \
-      \triangle used the first coordinate; the left-unit one uses the second."
+      "The same edge $f$, reparametrised in the other coordinate. The right-unit triangle used the first coordinate; the left-unit one uses the second."
   }
 
 -- | Functoriality on a point. A function @g : A → B@ sends each point of @A@ to
@@ -222,10 +205,7 @@ mapPointLevel :: Level
 mapPointLevel = Level
   { levelTitle     = "A function on a point"
   , levelIntro     =
-      "Now we leave a single type and bring in a function g : A → B. A function \
-      \sends each point of A to a point of B. The identity morphism at a point \
-      \just stays put, and g carries it along. The application g (?) is already \
-      \in place; fill in the point of A whose image is the identity's endpoint."
+      "Now we leave a single type and bring in a function $g : A \\to B$. A function sends each point of $A$ to a point of $B$. The identity morphism at a point just stays put, and $g$ carries it along. The application `g (?)` is already in place; fill in the point of $A$ whose image is the identity's endpoint."
   , levelStatement = "hom B (g x) (g x)"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -247,8 +227,7 @@ mapPointLevel = Level
       , "λ-intro  : introduce the interval coordinate"
       ]
   , levelConclusion =
-      "A function sends a point to a point, and the constant path at g x is its \
-      \identity. The next level carries a whole morphism along, not just a point."
+      "A function sends a point to a point, and the constant path at `g x` is its identity. The next level carries a whole morphism along, not just a point."
   }
 
 -- | Functoriality on a morphism (the action of a function on a 1-cell). A
@@ -260,10 +239,7 @@ apHomLevel :: Level
 apHomLevel = Level
   { levelTitle     = "A function on a morphism"
   , levelIntro     =
-      "Functions act on morphisms too. A morphism f : x → y in A is a path; \
-      \applying g at each moment of that path gives a morphism g x → g y in B. \
-      \The function g is already in place; fill in the point of A that f traces \
-      \out as the coordinate moves. Refine with f, then give the coordinate."
+      "Functions act on morphisms too. A morphism $f : x \\to y$ in $A$ is a path; applying $g$ at each moment of that path gives a morphism $g\\,x \\to g\\,y$ in $B$. The function $g$ is already in place; fill in the point of $A$ that $f$ traces out as the coordinate moves. Refine with `f`, then give the coordinate."
   , levelStatement = "hom B (g x) (g y)"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -286,9 +262,7 @@ apHomLevel = Level
       , "λ-intro  : introduce the interval coordinate"
       ]
   , levelConclusion =
-      "Applying g along the path f gives a morphism between the images. This is \
-      \functoriality: a function carries morphisms to morphisms, here g (f t) \
-      \tracing g's image of f."
+      "Applying $g$ along the path $f$ gives a morphism between the images. This is functoriality: a function carries morphisms to morphisms, here `g (f t)` tracing $g$'s image of $f$."
   }
 
 -- | Composition in a Segal type. Until now every construction was free; genuine
@@ -302,13 +276,7 @@ composeLevel :: Level
 composeLevel = Level
   { levelTitle     = "Composition"
   , levelIntro     =
-      "Every level so far was free: no hypothesis was needed. Genuine \
-      \composition is different. A Segal type is one where each composable pair \
-      \of arrows has a unique filler triangle, so is-segal-A x y z f g proves \
-      \that the type of pairs (h , triangle) is contractible. Its centre, \
-      \first (is-segal-A x y z f g), is the pair (composite , witness). Take the \
-      \first projection of that pair to get the composite arrow. Type the term \
-      \and press Check."
+      "Every level so far was free: no hypothesis was needed. Genuine composition is different. A Segal type is one where each composable pair of arrows has a unique filler triangle, so `is-segal-A x y z f g` proves that the type of pairs `(h , triangle)` is contractible. Its centre, `first (is-segal-A x y z f g)`, is the pair `(composite , witness)`. Take the first projection of that pair to get the composite arrow. Type the term and press Check."
   , levelStatement = "hom A x z"
   , levelPrelude   = segalPrelude
   , levelTemplate  = T.unlines
@@ -336,9 +304,7 @@ composeLevel = Level
       , "second     : the second component of a pair"
       ]
   , levelConclusion =
-      "The composite g ∘ f is the arrow at the centre of the contractible space \
-      \of fillers. The Segal condition is exactly what makes this arrow exist \
-      \and be well-defined. Next: recover the triangle that witnesses it."
+      "The composite $g \\circ f$ is the arrow at the centre of the contractible space of fillers. The Segal condition is exactly what makes this arrow exist and be well-defined. Next: recover the triangle that witnesses it."
   }
 
 -- | The witness triangle for the composite. The same centre of contraction
@@ -350,11 +316,7 @@ composeWitnessLevel :: Level
 composeWitnessLevel = Level
   { levelTitle     = "The composition witness"
   , levelIntro     =
-      "Building the composite arrow was only half of the centre of contraction. \
-      \Its second component is the triangle witnessing that the arrow really is \
-      \the composite of f and g. The goal's diagonal is the composite you built \
-      \last time. Take the second projection of the centre to recover its \
-      \witness."
+      "Building the composite arrow was only half of the centre of contraction. Its second component is the triangle witnessing that the arrow really is the composite of $f$ and $g$. The goal's diagonal is the composite you built last time. Take the second projection of the centre to recover its witness."
   , levelStatement = "hom2 A x y z f g (first (first (is-segal-A x y z f g)))"
   , levelPrelude   = segalPrelude
   , levelTemplate  = T.unlines
