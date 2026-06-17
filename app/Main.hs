@@ -18,6 +18,7 @@ import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
 import           Control.Monad      (when)
+import           Data.List          (find)
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
@@ -39,6 +40,7 @@ data Model = Model
   , _editable :: MisoString
   , _result   :: CheckResult
   , _solved   :: Set Int
+  , _history  :: [MisoString]   -- ^ prior editable states (newest first), for Undo
   } deriving (Eq)
 
 levelIx :: Lens Model Int
@@ -53,6 +55,9 @@ result = lens _result $ \m v -> m { _result = v }
 solved :: Lens Model (Set Int)
 solved = lens _solved $ \m v -> m { _solved = v }
 
+history :: Lens Model [MisoString]
+history = lens _history $ \m v -> m { _history = v }
+
 -- | The level currently being played.
 currentLevel :: Model -> Level
 currentLevel m = nthLevel (_levelIx m)
@@ -65,6 +70,7 @@ nthLevel i = head (drop i gameLevels)
 data Action
   = SetEditable MisoString
   | Refine T.Text
+  | Undo                    -- ^ revert the last tap-to-refine or Reset
   | Check
   | Reset
   | SelectLevel Int
@@ -189,7 +195,7 @@ initModel = loadLevel 0
 -- the focused hole and its moves show without a first manual Check. The solved
 -- set starts empty; @LoadProgress@ fills it from storage at mount.
 loadLevel :: Int -> Model
-loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty
+loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty []
   where
     lvl      = nthLevel i
     template = levelTemplate lvl
@@ -243,10 +249,13 @@ updateModel = \case
     i <- use levelIx
     io_ (saveDraft i s)
   SelectLevel i -> do
+    history .= []            -- each level keeps its own, fresh undo history
     reload i
     io (loadDraftAction i)   -- override the template with a saved draft, if any
   Reset         -> do
     i <- use levelIx
+    e <- use editable
+    history %= (e :)         -- a mistaken Reset can be undone
     reload i
     io_ (removeDraft i)      -- drop the draft so the template stays on next load
   Init          -> do
@@ -263,12 +272,23 @@ updateModel = \case
   Refine ins    -> do
     i <- use levelIx
     e <- use editable
+    history %= (e :)         -- remember the pre-refine text so the tap can be undone
     let e'  = refineFirstHole ins (fromMisoString e)
         res = checkLevel (nthLevel i) e'
     editable .= ms e'
     result   .= res
     io_ (saveDraft i (ms e'))
     recordSolved i res
+  Undo          -> do
+    hs <- use history
+    case hs of
+      []            -> pure ()
+      (prev : rest) -> do
+        i <- use levelIx
+        history  .= rest
+        editable .= prev
+        result   .= checkLevel (nthLevel i) (fromMisoString prev)
+        io_ (saveDraft i prev)
   Check         -> do
     i <- use levelIx
     e <- use editable
@@ -322,12 +342,16 @@ viewModel _ m =
         , movesView m
         , H.div_ [ P.class_ "buttons" ]
             [ H.button_ [ P.class_ "primary",   H.onClick Check ] [ text "Check" ]
+            , H.button_ ( [ P.class_ "secondary", H.onClick Undo ]
+                            <> [ P.disabled_ | null (m ^. history) ] )
+                [ text "Undo" ]
             , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
             ]
 
         , H.h3_ [] [ text "Result" ]
         , resultView lvl (m ^. result)
         , advanceView m
+        , navBar m
         ]
     ]
   where
@@ -439,22 +463,50 @@ moveButton kind ins =
       Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
       Give  -> ("give",            "kind-give")
 
--- | When the level is solved, offer a step onward: the next level if one
--- follows, otherwise a closing line once every level is done.
+-- | When the level is solved, offer a step onward: the next /unsolved/ level,
+-- searching forward and wrapping past the end, so the button still helps on the
+-- last level when an earlier one is unfinished. A closing line shows once every
+-- level is done.
 advanceView :: Model -> View Model Action
 advanceView m
-  | Solved <- m ^. result, hasNext =
-      H.div_ [ P.class_ "advance" ]
-        [ H.button_ [ H.onClick (SelectLevel next) ] [ text "Next level →" ] ]
-  | Solved <- m ^. result, allSolved =
-      H.div_ [ P.class_ "advance" ]
-        [ H.p_ [ P.class_ "all-done" ]
-            [ text "🏆 You've solved every level. The end — for now!" ] ]
+  | Solved <- m ^. result =
+      case nextUnsolved m of
+        Just j  -> H.div_ [ P.class_ "advance" ]
+                     [ H.button_ [ H.onClick (SelectLevel j) ]
+                         [ text "Next unsolved level →" ] ]
+        Nothing -> H.div_ [ P.class_ "advance" ]
+                     [ H.p_ [ P.class_ "all-done" ]
+                         [ text "🏆 You've solved every level. The end — for now!" ] ]
   | otherwise = text ""
+
+-- | The next unsolved level, searching forward from the current one and wrapping
+-- past the end (the current level is excluded). 'Nothing' when all are solved.
+nextUnsolved :: Model -> Maybe Int
+nextUnsolved m = find (not . isSolved m) order
   where
-    next      = _levelIx m + 1
-    hasNext   = next < length gameLevels
-    allSolved = solvedCount m == length gameLevels
+    n     = length gameLevels
+    order = [ (_levelIx m + k) `mod` n | k <- [1 .. n - 1] ]
+
+-- | A linear navigation bar: previous level, the current level's number, title,
+-- and solved status, then next level. Adjacent navigation, disabled at the ends;
+-- the level picker above remains the way to jump anywhere.
+navBar :: Model -> View Model Action
+navBar m =
+  H.div_ [ P.class_ "nav" ]
+    [ navButton "← Previous" (cur - 1) (cur > 0)
+    , H.span_ [ P.class_ "nav-current" ]
+        [ text (ms ( "Level " <> tshow (cur + 1) <> " / " <> tshow total
+                       <> " — " <> levelTitle (nthLevel cur)
+                       <> (if isSolved m cur then " ✓" else "") )) ]
+    , navButton "Next →" (cur + 1) (cur < total - 1)
+    ]
+  where
+    cur    = _levelIx m
+    total  = length gameLevels
+    tshow  = T.pack . show
+    navButton lbl j enabled =
+      H.button_ ( [ H.onClick (SelectLevel j) ] <> [ P.disabled_ | not enabled ] )
+        [ text lbl ]
 
 resultView :: Level -> CheckResult -> View Model Action
 resultView lvl = \case

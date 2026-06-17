@@ -7,6 +7,12 @@
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
+    /* Prose is set in a clean sans-serif for on-screen readability; math is
+       rendered separately by KaTeX in its own fonts, so the prose font needs no
+       math glyph coverage. Code, panels, and buttons keep their own fonts. */
+    h1, h2, h3, p, summary, .nav-current {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
     header.game { border-bottom: 1px solid #eee; margin-bottom: 1rem;
                   padding-bottom: .5rem; }
     header.game h1 { margin: 0; font-size: 1.5rem; }
@@ -71,8 +77,20 @@
                                 border: 1px solid #ccc; border-radius: 6px;
                                 cursor: pointer; }
     .buttons button.secondary:hover { background: #f3f3f3; }
+    .buttons button:disabled { color: #bbb; cursor: default; }
+    .buttons button:disabled:hover { background: #fff; }
     .levels button:hover { border-color: #999; }
     .advance button:hover { background: #cfe9cf; }
+    /* Linear prev / current / next navigation footer. */
+    .nav { display: flex; align-items: center; justify-content: space-between;
+           gap: .5rem; margin: 1.2rem 0 .3rem; padding-top: .6rem;
+           border-top: 1px solid #eee; }
+    .nav-current { font-weight: 600; color: #444; text-align: center;
+                   flex: 1; }
+    .nav button { margin: 0; background: #fff; border: 1px solid #ccc;
+                  border-radius: 6px; cursor: pointer; }
+    .nav button:not(:disabled):hover { border-color: #999; }
+    .nav button:disabled { color: #bbb; cursor: default; border-color: #eee; }
     /* Two-part move button: a colour-coded kind chip + a syntax-highlighted
        filler term. The button itself is a flex container with no padding; the
        two parts supply their own. */
