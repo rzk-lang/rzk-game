@@ -4,8 +4,12 @@
 -- roadmap's Phase 3.) For now, the first Rzk-native level: a @hom2@ filler.
 module RzkGame.Content
   ( gameLevels
+  , idMorphismLevel
+  , constTriangleLevel
   , hom2Level
   , homLeftUnitLevel
+  , mapPointLevel
+  , apHomLevel
   ) where
 
 import           Data.Text (Text)
@@ -13,10 +17,19 @@ import qualified Data.Text as T
 
 import           RzkGame.Level
 
--- | The levels, in play order. (Later this comes from a game spec; see the
--- roadmap's Phase 3.)
+-- | The levels, in play order, easiest first. (Later this comes from a game
+-- spec; see the roadmap's Phase 3.) The ramp introduces one idea at a time:
+-- a 1-dimensional morphism, then the constant 2-simplex, then the two
+-- degenerate triangles that reuse a non-trivial edge.
 gameLevels :: [Level]
-gameLevels = [hom2Level, homLeftUnitLevel]
+gameLevels =
+  [ idMorphismLevel
+  , constTriangleLevel
+  , hom2Level
+  , homLeftUnitLevel
+  , mapPointLevel
+  , apHomLevel
+  ]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
 -- builds on. Checked once; populates the inventory.
@@ -33,6 +46,74 @@ prelude = T.unlines
   , "  := ( (t , s) : Δ²) → A [ s ≡ 0₂ ↦ f t , t ≡ 1₂ ↦ g s , s ≡ t ↦ h s ]"
   ]
 
+-- | The warm-up: the identity morphism. A morphism @x → y@ is a path along the
+-- directed interval @Δ¹@; the identity is the constant path at @x@. One hole,
+-- a trivial tope context — the gentlest first contact with an extension type.
+-- Solution: ignore the interval coordinate and return @x@.
+idMorphismLevel :: Level
+idMorphismLevel = Level
+  { levelTitle     = "The identity morphism"
+  , levelIntro     =
+      "A morphism x → y in A is a path along the directed interval Δ¹. The \
+      \simplest one is the identity: the morphism from x to itself that just \
+      \stays put. Both endpoints of the path are x, so a constant path will do. \
+      \Build it."
+  , levelStatement = "hom A x x"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def my-id (A : U) (x : A)"
+      , "  : hom A x x"
+      , "  := \\ t → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def my-id (A : U) (x : A)"
+      , "  : hom A x x"
+      , "  := \\ t → x"
+      ]
+  , levelInventory =
+      [ "x        : A"
+      , "id-hom   : (A : U) → (x : A) → hom A x x"
+      , "λ-intro  : introduce the interval coordinate"
+      ]
+  , levelConclusion =
+      "The constant path is the identity morphism. Both endpoints ask for x, so \
+      \x itself fills the hole — no need to move along the interval at all."
+  }
+
+-- | The constant 2-simplex: every edge is the identity at a single point @x@.
+-- A first @hom2@ with all three boundaries equal, so the same point @x@ fills
+-- the whole triangle. It teaches the two-coordinate λ-intro before the edges
+-- start to differ. Solution: ignore both coordinates and return @x@.
+constTriangleLevel :: Level
+constTriangleLevel = Level
+  { levelTitle     = "The constant triangle"
+  , levelIntro     =
+      "A hom2 is a triangle: a map out of the 2-simplex Δ². The simplest one is \
+      \constant — every edge is the identity at a single point x. Introduce the \
+      \two coordinates, then find the point of A that sits on all three edges."
+  , levelStatement = "hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def const-triangle (A : U) (x : A)"
+      , "  : hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
+      , "  := \\ (t , s) → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def const-triangle (A : U) (x : A)"
+      , "  : hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
+      , "  := \\ (t , s) → x"
+      ]
+  , levelInventory =
+      [ "x        : A"
+      , "id-hom   : (A : U) → (x : A) → hom A x x"
+      , "λ-intro  : introduce the two cube coordinates"
+      ]
+  , levelConclusion =
+      "Every boundary asked for x, so the constant function fills the whole \
+      \triangle. In the next levels one edge becomes a genuine morphism, and the \
+      \point has to vary along a coordinate."
+  }
+
 -- | The right-unit degenerate triangle. Given @f : x → y@, build the 2-simplex
 -- whose right edge is the identity at @y@ and whose hypotenuse is @f@ itself.
 -- Solution: ignore the second coordinate and reuse @f@ on the first.
@@ -40,10 +121,11 @@ hom2Level :: Level
 hom2Level = Level
   { levelTitle     = "The right-unit triangle"
   , levelIntro     =
-      "A hom2 is a triangle: a 2-cell witnessing that its hypotenuse is the \
-      \composite of its other two edges. Most triangles need A to be Segal — \
-      \but some are free. Given f : x → y, the triangle whose right edge is the \
-      \identity at y has f itself as its hypotenuse. Build it."
+      "Now an edge becomes a genuine morphism. The hypotenuse of a hom2 is the \
+      \composite of its other two edges. Most triangles need A to be Segal — but \
+      \some are free. Given f : x → y, the triangle whose right edge is the \
+      \identity at y has f itself as its hypotenuse. This time the point must \
+      \vary along the first coordinate. Build it."
   , levelStatement = "hom2 A x y y f (id-hom A y) f"
   , levelPrelude   = prelude
   , levelTemplate  = T.unlines
@@ -98,4 +180,74 @@ homLeftUnitLevel = Level
   , levelConclusion =
       "The same edge f, reparametrised in the other coordinate. The right-unit \
       \triangle used the first coordinate; the left-unit one uses the second."
+  }
+
+-- | Functoriality on a point. A function @g : A → B@ sends each point of @A@ to
+-- a point of @B@. The identity morphism at @x@ is carried to the identity at its
+-- image @g x@. The application @g@ is already in place; the player fills the
+-- point it carries. Solution: the constant point @x@, so the result is @g x@.
+mapPointLevel :: Level
+mapPointLevel = Level
+  { levelTitle     = "A function on a point"
+  , levelIntro     =
+      "Now we leave a single type and bring in a function g : A → B. A function \
+      \sends each point of A to a point of B. The identity morphism at a point \
+      \just stays put, and g carries it along. The application g (?) is already \
+      \in place; fill in the point of A whose image is the identity's endpoint."
+  , levelStatement = "hom B (g x) (g x)"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def map-point (A B : U) (g : A → B) (x : A)"
+      , "  : hom B (g x) (g x)"
+      , "  := \\ t → g (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def map-point (A B : U) (g : A → B) (x : A)"
+      , "  : hom B (g x) (g x)"
+      , "  := \\ t → g (x)"
+      ]
+  , levelInventory =
+      [ "g        : A → B"
+      , "x        : A"
+      , "λ-intro  : introduce the interval coordinate"
+      ]
+  , levelConclusion =
+      "A function sends a point to a point, and the constant path at g x is its \
+      \identity. The next level carries a whole morphism along, not just a point."
+  }
+
+-- | Functoriality on a morphism (the action of a function on a 1-cell). A
+-- function @g : A → B@ carries a morphism @f : x → y@ in @A@ to a morphism
+-- @g x → g y@ in @B@, by applying @g@ at each moment of the path. The
+-- application @g@ is in place; the player fills the point @f@ traces out.
+-- Solution: the traversing point @f t@, so the result is @g (f t)@.
+apHomLevel :: Level
+apHomLevel = Level
+  { levelTitle     = "A function on a morphism"
+  , levelIntro     =
+      "Functions act on morphisms too. A morphism f : x → y in A is a path; \
+      \applying g at each moment of that path gives a morphism g x → g y in B. \
+      \The function g is already in place; fill in the point of A that f traces \
+      \out as the coordinate moves. Refine with f, then give the coordinate."
+  , levelStatement = "hom B (g x) (g y)"
+  , levelPrelude   = prelude
+  , levelTemplate  = T.unlines
+      [ "#def ap-hom (A B : U) (g : A → B) (x y : A) (f : hom A x y)"
+      , "  : hom B (g x) (g y)"
+      , "  := \\ t → g (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def ap-hom (A B : U) (g : A → B) (x y : A) (f : hom A x y)"
+      , "  : hom B (g x) (g y)"
+      , "  := \\ t → g (f t)"
+      ]
+  , levelInventory =
+      [ "g        : A → B"
+      , "f        : hom A x y"
+      , "λ-intro  : introduce the interval coordinate"
+      ]
+  , levelConclusion =
+      "Applying g along the path f gives a morphism between the images. This is \
+      \functoriality: a function carries morphisms to morphisms, here g (f t) \
+      \tracing g's image of f."
   }
