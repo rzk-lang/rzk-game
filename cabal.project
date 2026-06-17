@@ -8,11 +8,12 @@
 packages: .
 
 -- rzk: holes + structured goal/context query (#236–#240) plus pattern
--- binder-name restoration in goals/holes (#242).
+-- binder-name restoration in goals/holes (#242). Pinned to the #242 merge
+-- commit on develop (a stable ref; the old branch-tip SHA went away on merge).
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: fffe5bc9
+  tag: 79e1d372
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
