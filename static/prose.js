@@ -34,4 +34,15 @@
   }
 
   globalThis.renderProse = renderProse;
+
+  // Render a level's intro/conclusion and inject them by id. The target divs are
+  // always present in the DOM and never owned by miso's virtual DOM (miso sees
+  // them as empty), so injecting here cannot desync miso's diff. Called once per
+  // level load from the wasm app (see Main.hs renderProseIO).
+  globalThis.setProse = function (introSrc, conclSrc) {
+    var i = document.getElementById("prose-intro");
+    var c = document.getElementById("prose-concl");
+    if (i) i.innerHTML = renderProse(introSrc);
+    if (c) c.innerHTML = renderProse(conclSrc);
+  };
 })();

@@ -14,8 +14,7 @@ module Main (main) where
 import           Miso
 import qualified Miso.Html          as H
 import qualified Miso.Html.Property as P
-import           Miso.DSL           (fromJSValUnchecked, jsg1)
-import           Miso.Property      (textProp)
+import           Miso.DSL           (jsg2)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
@@ -34,14 +33,21 @@ import           RzkGame.Content    (apHomLevel, composeLevel,
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
--- | Render a level's Markdown/TeX prose to HTML by calling the global
--- @renderProse@ (marked + KaTeX; see @prose.js@) through miso's JS DSL. Called
--- once per level load; the result is stored in the model and injected as
--- @innerHTML@. We go through @jsg1@ rather than a raw @foreign import@ because
--- marshalling a @JSString@ argument directly trips a codegen bug in the current
--- wasm toolchain.
-js_renderProse :: MisoString -> IO MisoString
-js_renderProse src = jsg1 "renderProse" src >>= fromJSValUnchecked
+-- | Render a level's intro and conclusion prose (Markdown/TeX via @prose.js@)
+-- and inject them into the always-present @#prose-intro@ / @#prose-concl@ divs.
+--
+-- The injected DOM lives entirely outside miso's virtual DOM: those divs are
+-- rendered empty and never carry an @innerHTML@ attribute, so miso never diffs
+-- their content. Setting it imperatively here therefore cannot desync miso's
+-- diff (an earlier version injected via a vdom @innerHTML@ prop, which crashed
+-- with a stale-DOM-ref @removeChild@ when the result panel restructured on a
+-- solve). We call through the DSL's @jsg2@ rather than a raw @foreign import@
+-- because marshalling a @JSString@ argument directly trips a wasm codegen bug.
+renderProseIO :: Int -> IO ()
+renderProseIO i = do
+  let lvl = nthLevel i
+  _ <- jsg2 "setProse" (ms (levelIntro lvl)) (ms (levelConclusion lvl))
+  pure ()
 
 -- | UI state: which level is being played, the player's current text, the last
 -- check result, and the set of solved levels (by index). The solved set is
@@ -52,8 +58,6 @@ data Model = Model
   , _result   :: CheckResult
   , _solved   :: Set Int
   , _history  :: [MisoString]   -- ^ prior editable states (newest first), for Undo
-  , _proseIntro :: MisoString   -- ^ the level intro, rendered to HTML (Markdown/TeX)
-  , _proseConcl :: MisoString   -- ^ the level conclusion, rendered to HTML
   } deriving (Eq)
 
 levelIx :: Lens Model Int
@@ -70,12 +74,6 @@ solved = lens _solved $ \m v -> m { _solved = v }
 
 history :: Lens Model [MisoString]
 history = lens _history $ \m v -> m { _history = v }
-
-proseIntro :: Lens Model MisoString
-proseIntro = lens _proseIntro $ \m v -> m { _proseIntro = v }
-
-proseConcl :: Lens Model MisoString
-proseConcl = lens _proseConcl $ \m v -> m { _proseConcl = v }
 
 -- | The level currently being played.
 currentLevel :: Model -> Level
@@ -96,7 +94,6 @@ data Action
   | Init                    -- ^ dispatched at mount: load saved progress + draft
   | SetSolved (Set Int)
   | ApplyText Int MisoString  -- ^ install a level's restored draft (or template)
-  | SetProse Int MisoString MisoString  -- ^ install a level's rendered prose
   deriving (Eq)
 
 main :: IO ()
@@ -227,7 +224,7 @@ initModel = loadLevel 0
 -- the focused hole and its moves show without a first manual Check. The solved
 -- set starts empty; @LoadProgress@ fills it from storage at mount.
 loadLevel :: Int -> Model
-loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty [] "" ""
+loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty []
   where
     lvl      = nthLevel i
     template = levelTemplate lvl
@@ -274,15 +271,6 @@ loadDraftAction :: Int -> IO Action
 loadDraftAction i =
   ApplyText i . fromMaybe (ms (levelTemplate (nthLevel i))) <$> getLocalStorage (draftKey i)
 
--- | Render a level's intro and conclusion prose (Markdown/TeX → HTML) and return
--- the action that installs them. Carries the index so a stale render after a
--- quick level switch is ignored.
-loadProseAction :: Int -> IO Action
-loadProseAction i = do
-  let lvl = nthLevel i
-  intro <- js_renderProse (ms (levelIntro lvl))
-  concl <- js_renderProse (ms (levelConclusion lvl))
-  pure (SetProse i intro concl)
 
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
@@ -294,7 +282,7 @@ updateModel = \case
     history .= []            -- each level keeps its own, fresh undo history
     reload i
     io (loadDraftAction i)   -- override the template with a saved draft, if any
-    io (loadProseAction i)   -- render this level's prose
+    io_ (renderProseIO i)    -- render this level's prose into the stable divs
   Reset         -> do
     i <- use levelIx
     e <- use editable
@@ -305,13 +293,8 @@ updateModel = \case
     io (SetSolved <$> readProgress)
     i <- use levelIx
     io (loadDraftAction i)
-    io (loadProseAction i)
+    io_ (renderProseIO i)
   SetSolved s   -> solved .= s
-  SetProse i intro concl -> do
-    cur <- use levelIx
-    when (cur == i) $ do
-      proseIntro .= intro
-      proseConcl .= concl
   ApplyText i s -> do
     -- Ignore a draft that arrived after the player moved to another level.
     cur <- use levelIx
@@ -378,7 +361,8 @@ viewModel _ m =
         [ levelPicker m
 
         , H.h2_ [] [ text (ms (titleMark <> levelTitle lvl)) ]
-        , H.div_ [ P.class_ "prose", textProp "innerHTML" (m ^. proseIntro) ] []
+        -- Prose is injected by id (see renderProseIO); miso keeps this div empty.
+        , H.div_ [ P.id_ "prose-intro", P.class_ "prose" ] []
 
         , H.h3_ [] [ text "Goal" ]
         , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
@@ -398,7 +382,8 @@ viewModel _ m =
             ]
 
         , H.h3_ [] [ text "Result" ]
-        , resultView (m ^. proseConcl) (m ^. result)
+        , resultView (m ^. result)
+        , conclusionView m
         , advanceView m
         , navBar m
         ]
@@ -557,8 +542,8 @@ navBar m =
       H.button_ ( [ H.onClick (SelectLevel j) ] <> [ P.disabled_ | not enabled ] )
         [ text lbl ]
 
-resultView :: MisoString -> CheckResult -> View Model Action
-resultView conclHtml = \case
+resultView :: CheckResult -> View Model Action
+resultView = \case
   NotChecked   -> H.pre_ [] [ text "(press Check)" ]
   ParseError e -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
   -- The rzk type-error formatter is verbose (a "when typechecking …" trace per
@@ -571,14 +556,23 @@ resultView conclHtml = \case
       ]
   Solved       ->
     H.div_ [ P.class_ "ok" ]
-      [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ]
-      , H.div_ [ P.class_ "prose", textProp "innerHTML" conclHtml ] []
-      ]
+      [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ] ]
   Holes hs ->
     H.div_ [ P.class_ "holes" ]
       ( H.p_ [] [ text (ms (T.pack (show (length hs)) <> " hole(s) remaining")) ]
       : map holeView hs
       )
+
+-- | The level conclusion prose. The div is always present (its content is
+-- injected by id in 'renderProseIO'), so it is never created or destroyed during
+-- a result swap — it is simply revealed once the level is solved.
+conclusionView :: Model -> View Model Action
+conclusionView m = H.div_ [ P.id_ "prose-concl", P.class_ (ms cls) ] []
+  where
+    cls :: T.Text
+    cls = case m ^. result of
+      Solved -> "prose concl shown"
+      _      -> "prose concl hidden"
 
 -- | Render one hole as a stack of labelled panels: goal, then any local
 -- hypotheses, cube variables, and tope assumptions.

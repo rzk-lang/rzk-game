@@ -26,6 +26,11 @@
     .prose code { font-family: ui-monospace, monospace; font-size: .9em;
                   background: #f0f0f0; padding: .05rem .25rem; border-radius: 3px; }
     .prose .katex-display { margin: .5rem 0; }
+    /* The conclusion prose is always in the DOM (injected by id) and revealed
+       only once the level is solved. */
+    .concl.hidden { display: none; }
+    .concl.shown { margin: .4rem 0 0; padding: .6rem; background: #eef7ee;
+                   border: 1px solid #cfe6cf; border-radius: 6px; }
     header.game { border-bottom: 1px solid #eee; margin-bottom: 1rem;
                   padding-bottom: .5rem; }
     header.game h1 { margin: 0; font-size: 1.5rem; }
