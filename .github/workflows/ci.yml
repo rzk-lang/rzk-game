@@ -38,14 +38,20 @@ jobs:
       # wasm-opt, wasm-tools, node). Realising it from scratch is the single
       # biggest cost (~3.5 min every run); it only changes when the flake inputs
       # do, so key on flake.nix/flake.lock. With a stable key the cache is saved
-      # once and reused; GitHub's per-repo LRU bounds the overall budget. If the
-      # nix + cabal caches together start evicting each other, add
-      # gc-max-store-size-linux here to trim the saved store.
+      # once and reused; GitHub's per-repo LRU bounds the overall budget.
+      #
+      # The "nix2-" generation: the first cache (saved under the old
+      # DeterminateSystems installer) was incomplete — it missed the realised
+      # wasm32-wasi-ghc output, so nix develop rebuilt the toolchain every run
+      # while still paying to restore the cache. nix-quick-install puts the whole
+      # closure in a runner-writable store that cache-nix-action can capture;
+      # bumping the key prefix forces one clean re-save. Bump it again if the
+      # restored store ever stops containing the realised toolchain.
       - name: ❄️ Cache the nix store (wasm toolchain)
         uses: nix-community/cache-nix-action@v6
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
+          primary-key: nix2-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix2-${{ runner.os }}-
 
       # Cache the wasm cabal store (built rzk/miso/deps), the Hackage index, and
       # the cloned source-repository-packages (so rzk's full-history clone, ~40 s,
