@@ -170,6 +170,18 @@ hsSelftest = do
   putStrLn "== compose-witness tap chain: spine then x y z f g (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain composeWitnessLevel ["second (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
+  putStrLn "== soundness: an empty proof is never Solved (expect OK) =="
+  putStrLn (if all (\lvl -> checkLevel lvl "" /= Solved) gameLevels
+              then "empty-not-solved: OK" else "EMPTY-NOT-SOLVED FAILED")
+  putStrLn "== soundness: a wrong-typed goal is not Solved (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level "#def rut (A : U) : U := A")))
+  putStrLn "== soundness: helper definitions are allowed (expect Solved) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level (T.unlines
+    [ "#def rut-edge (A : U) (x y : A) (f : hom A x y) : hom A x y := f"
+    , "#def rut (A : U) (x y : A) (f : hom A x y)"
+    , "  : hom2 A x y y f (id-hom A y) f"
+    , "  := \\ (t , s) → rut-edge A x y f t"
+    ]))))
   putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl
