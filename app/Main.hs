@@ -17,18 +17,24 @@ import qualified Miso.Html.Property as P
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
+import           Data.Maybe         (mapMaybe)
+import           Data.Set           (Set)
+import qualified Data.Set           as Set
 import qualified Data.Text          as T
+import           Text.Read          (readMaybe)
 
 import           RzkGame.Content    (gameLevels)
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
--- | UI state: which level is being played, the player's current text, and the
--- last check result.
+-- | UI state: which level is being played, the player's current text, the last
+-- check result, and the set of solved levels (by index). The solved set is
+-- persisted to @localStorage@, so progress survives a reload.
 data Model = Model
   { _levelIx  :: Int
   , _editable :: MisoString
   , _result   :: CheckResult
+  , _solved   :: Set Int
   } deriving (Eq)
 
 levelIx :: Lens Model Int
@@ -39,6 +45,9 @@ editable = lens _editable $ \m v -> m { _editable = v }
 
 result :: Lens Model CheckResult
 result = lens _result $ \m v -> m { _result = v }
+
+solved :: Lens Model (Set Int)
+solved = lens _solved $ \m v -> m { _solved = v }
 
 -- | The level currently being played.
 currentLevel :: Model -> Level
@@ -55,6 +64,8 @@ data Action
   | Check
   | Reset
   | SelectLevel Int
+  | LoadProgress       -- ^ dispatched at mount: read the solved set from storage
+  | SetSolved (Set Int)
   deriving (Eq)
 
 main :: IO ()
@@ -102,45 +113,95 @@ hsSelftest = do
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl
   putStrLn (if all lossless gameLevels then "lossless: OK" else "LOSSLESS FAILED")
+  putStrLn "== progress codec: encode/decode round-trips; junk is dropped =="
+  let allSolved   = Set.fromList [0 .. length gameLevels - 1]
+      roundTrips  = decodeSolved (encodeSolved allSolved) == allSolved
+      emptyOk     = decodeSolved (encodeSolved Set.empty) == Set.empty
+      junkDropped = decodeSolved "0,x,,2" == Set.fromList [0, 2]
+  putStrLn (if roundTrips && emptyOk && junkDropped
+              then "progress codec: OK" else "PROGRESS CODEC FAILED")
 #endif
 #endif
 
 app :: App Model Action
-app = component initModel updateModel viewModel
+app = (component initModel updateModel viewModel)
+  { mount = Just LoadProgress }   -- seed the solved set from localStorage
 
 initModel :: Model
 initModel = loadLevel 0
 
 -- | A fresh model for the level at the given index: its template, checked so
--- the focused hole and its moves show without a first manual Check.
+-- the focused hole and its moves show without a first manual Check. The solved
+-- set starts empty; @LoadProgress@ fills it from storage at mount.
 loadLevel :: Int -> Model
-loadLevel i = Model i (ms template) (checkLevel lvl template)
+loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty
   where
     lvl      = nthLevel i
     template = levelTemplate lvl
+
+-- | The localStorage key under which the solved set is persisted.
+progressKey :: MisoString
+progressKey = "rzk-game-progress"
+
+-- | The solved set is stored as a comma-separated list of level indices, e.g.
+-- @"0,1"@. Unparseable or out-of-range entries are dropped on load, so a stale
+-- value from an older level list cannot crash the game.
+encodeSolved :: Set Int -> MisoString
+encodeSolved = ms . T.intercalate "," . map (T.pack . show) . Set.toList
+
+decodeSolved :: MisoString -> Set Int
+decodeSolved =
+  Set.fromList . mapMaybe (readMaybe . T.unpack) . T.splitOn "," . fromMisoString
+
+-- | Read the persisted solved set (empty if nothing is stored).
+readProgress :: IO (Set Int)
+readProgress = maybe Set.empty decodeSolved <$> getLocalStorage progressKey
+
+-- | Persist the solved set.
+saveProgress :: Set Int -> IO ()
+saveProgress = setLocalStorage progressKey . encodeSolved
 
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
   SetEditable s -> editable .= s
   SelectLevel i -> reload i
   Reset         -> use levelIx >>= reload
+  LoadProgress  -> io (SetSolved <$> readProgress)
+  SetSolved s   -> solved .= s
   Refine ins    -> do
     i <- use levelIx
     e <- use editable
-    let e' = refineFirstHole ins (fromMisoString e)
+    let e'  = refineFirstHole ins (fromMisoString e)
+        res = checkLevel (nthLevel i) e'
     editable .= ms e'
-    result   .= checkLevel (nthLevel i) e'
+    result   .= res
+    recordSolved i res
   Check         -> do
     i <- use levelIx
     e <- use editable
-    result .= checkLevel (nthLevel i) (fromMisoString e)
+    let res = checkLevel (nthLevel i) (fromMisoString e)
+    result .= res
+    recordSolved i res
   where
     -- Load a level's template into the model and check it, so the focused hole
-    -- and its moves show without a first manual Check.
+    -- and its moves show without a first manual Check. The solved set is left
+    -- untouched, so switching levels preserves progress.
     reload i = do
       levelIx  .= i
       editable .= ms (levelTemplate (nthLevel i))
       result   .= checkLevel (nthLevel i) (levelTemplate (nthLevel i))
+
+    -- On a solved level, record it and persist the updated set. We only write to
+    -- storage when the set actually changes, to avoid redundant re-checks.
+    recordSolved i Solved = do
+      s <- use solved
+      if Set.member i s
+        then pure ()
+        else do
+          let s' = Set.insert i s
+          solved .= s'
+          io_ (saveProgress s')
+    recordSolved _ _ = pure ()
 
 viewModel :: props -> Model -> View Model Action
 viewModel _ m =
@@ -196,16 +257,46 @@ editorView code =
         ]
     ]
 
--- | The level selector: one button per level, the current one highlighted.
+-- | The level selector: one button per level, the current one highlighted and
+-- each solved one marked with a tick. Navigation stays free — every level is
+-- always reachable. A badge underneath counts progress towards completion.
 levelPicker :: Model -> View Model Action
 levelPicker m =
-  H.div_ [ P.class_ "levels" ]
-    [ H.button_
-        ( H.onClick (SelectLevel i)
-        : [ P.class_ "current" | i == _levelIx m ] )
-        [ text (ms (T.pack (show (i + 1)) <> ". " <> levelTitle (nthLevel i))) ]
-    | i <- [0 .. length gameLevels - 1]
+  H.div_ []
+    [ H.div_ [ P.class_ "levels" ] (map button [0 .. total - 1])
+    , progressBadge m
     ]
+  where
+    total    = length gameLevels
+    button i = H.button_
+      [ H.onClick (SelectLevel i), P.class_ (ms (cls i)) ]
+      [ text (ms (mark i <> T.pack (show (i + 1)) <> ". " <> levelTitle (nthLevel i))) ]
+    cls i = T.unwords $ ["current" | i == _levelIx m]
+                     <> ["solved"  | isSolved m i]
+    mark i = if isSolved m i then "✓ " else ""
+
+-- | Whether the level at the given index has been solved.
+isSolved :: Model -> Int -> Bool
+isSolved m i = Set.member i (m ^. solved)
+
+-- | How many of the current levels are solved (stale stored indices, beyond the
+-- present level list, do not count).
+solvedCount :: Model -> Int
+solvedCount m = length (filter (isSolved m) [0 .. length gameLevels - 1])
+
+-- | A progress line under the picker: an "N / M solved" count, or a trophy when
+-- every level is done.
+progressBadge :: Model -> View Model Action
+progressBadge m
+  | done == total && total > 0 =
+      H.p_ [ P.class_ "progress done" ]
+        [ text (ms ("🏆 All " <> T.pack (show total) <> " levels solved!")) ]
+  | otherwise =
+      H.p_ [ P.class_ "progress" ]
+        [ text (ms (T.pack (show done) <> " / " <> T.pack (show total) <> " solved")) ]
+  where
+    done  = solvedCount m
+    total = length gameLevels
 
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is
@@ -221,15 +312,22 @@ movesView m =
             ]
     _ -> H.p_ [ P.class_ "muted" ] [ text "Moves appear here when a hole is in focus." ]
 
--- | When the level is solved and another follows, offer a step onward.
+-- | When the level is solved, offer a step onward: the next level if one
+-- follows, otherwise a closing line once every level is done.
 advanceView :: Model -> View Model Action
 advanceView m
-  | Solved <- m ^. result, next < length gameLevels =
+  | Solved <- m ^. result, hasNext =
       H.div_ [ P.class_ "advance" ]
         [ H.button_ [ H.onClick (SelectLevel next) ] [ text "Next level →" ] ]
+  | Solved <- m ^. result, allSolved =
+      H.div_ [ P.class_ "advance" ]
+        [ H.p_ [ P.class_ "all-done" ]
+            [ text "🏆 You've solved every level. The end — for now!" ] ]
   | otherwise = text ""
   where
-    next = _levelIx m + 1
+    next      = _levelIx m + 1
+    hasNext   = next < length gameLevels
+    allSolved = solvedCount m == length gameLevels
 
 resultView :: Level -> CheckResult -> View Model Action
 resultView lvl = \case

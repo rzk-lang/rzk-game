@@ -32,6 +32,7 @@ executable rzk-game
   hs-source-dirs:   app
   build-depends:
       base
+    , containers
     , text
     , miso
     , rzk-game
