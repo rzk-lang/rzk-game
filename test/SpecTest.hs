@@ -152,22 +152,53 @@ main = do
   --    hand-written goal string.
   putStrLn "== hints: levels carry hints; a when-goal fires on the real goal =="
   let levelByTitle t = head [ lvl | lvl <- gameLevels, levelTitle lvl == t ]
-      firstHoleGoal lvl = case checkLevel lvl (levelTemplate lvl) of
+      goalOf lvl src = case checkLevel lvl src of
         Holes (h : _) -> Just (hvGoal h)
         _             -> Nothing
-      surfaces lvl = case (firstHoleGoal lvl, levelHints lvl) of
-        (Just g, h : _) -> hintMatchesGoal h g
-        _               -> False
+      -- Some hint's when-goal is an infix of the focused goal of this source.
+      anySurfaces lvl src = case goalOf lvl src of
+        Just g  -> any (`hintMatchesGoal` g) (levelHints lvl)
+        Nothing -> False
       myId = levelByTitle "The identity morphism"
       rut  = levelByTitle "The right-unit triangle"
   check "my-id carries two hints" (length (levelHints myId) == 2)
   check "rut carries two hints"   (length (levelHints rut) == 2)
-  check "my-id's first hint auto-surfaces on its rendered goal" (surfaces myId)
-  check "rut's first hint auto-surfaces on its rendered goal"   (surfaces rut)
+  -- A when-goal fires on the template's focused goal …
+  check "my-id has a hint that auto-surfaces on its template goal"
+    (anySurfaces myId (levelTemplate myId))
+  check "rut has a hint that auto-surfaces on its template goal"
+    (anySurfaces rut (levelTemplate rut))
+  -- … and stops firing once the player refines past that goal, so the
+  -- contextual hint genuinely tracks the goal rather than showing forever.
+  check "my-id's when-goal stops matching after the coordinate is introduced"
+    (not (anySurfaces myId (refineFirstHole "\\ t → ?" (levelTemplate myId))))
+  check "rut's when-goal stops matching after the first edge is filled"
+    (not (anySurfaces rut (refineFirstHole "f ?" (levelTemplate rut))))
   check "a hint with no when-goal never auto-surfaces"
     (not (hintMatchesGoal (Hint "text" Nothing) "any goal"))
   check "a non-matching when-goal does not fire"
     (not (hintMatchesGoal (Hint "text" (Just "nonsense")) "hom A x x"))
+
+  -- The reveal policy: plain hints are revealed one at a time; a contextual
+  -- (when-goal) hint shows only while it matches and is never reached by the
+  -- manual reveal, so it never appears out of context.
+  putStrLn "== visibleHints: plain reveal one-at-a-time; contextual hints track the goal =="
+  let plain = Hint "general advice" Nothing
+      ctx   = Hint "look at the goal" (Just "Δ¹ t")
+      sample = [plain, ctx]
+      matchG = Just "(t : 2 | Δ¹ t) → A"   -- the contextual trigger matches
+      otherG = Just "A [t ≡ 0₂ ↦ x]"        -- it no longer matches
+      shownTexts mg k = map (hintText . snd) (visibleHints sample mg k)
+  check "nothing is shown before the player asks"
+    (null (visibleHints sample matchG 0))
+  check "asking shows the plain hint and the matching contextual one"
+    (shownTexts matchG 1 == ["general advice", "look at the goal"])
+  check "the contextual hint hides once its goal no longer matches"
+    (shownTexts otherG 1 == ["general advice"])
+  check "the manual reveal never surfaces a contextual hint out of context"
+    (shownTexts otherG 9 == ["general advice"])   -- even with a high reveal count
+  check "plainHintCount counts only the untriggered hints"
+    (plainHintCount sample == 1)
 
   n <- readIORef failed
   if n == 0

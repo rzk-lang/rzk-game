@@ -335,8 +335,8 @@ idMorphismLevel = Level
       , "λ-intro  : introduce the interval coordinate"
       ]
   , levelHints      =
-      [ Hint "Look at the goal: both endpoints of the path are the same point $x$ (`↦ x` at each end), so you never need to move along the interval." (Just "↦ x")
-      , Hint "Introduce the interval coordinate and ignore it — return $x$ whatever the coordinate: `\\ t → x`." Nothing
+      [ Hint "Both endpoints of the path are the same point $x$, so you never need to move along the interval." Nothing
+      , Hint "Right now the goal is still the whole path type `(t : 2 | Δ¹ t) → …`. Your first move is to introduce the interval coordinate: tap `λ-intro` or type `\\ t → ?`. Then return $x$." (Just "Δ¹ t")
       ]
   , levelConclusion =
       "The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all."
@@ -406,8 +406,8 @@ hom2Level = Level
       , "λ-intro  : introduce the cube coordinates"
       ]
   , levelHints      =
-      [ Hint "The hypotenuse and the bottom edge of the goal both read $f$ (`↦ f t`), and the right edge is the identity at $y$. So the whole triangle is $f$, reparametrised — you only need one coordinate." (Just "↦ f t")
-      , Hint "Reuse $f$ along the first coordinate, ignoring the second: `\\ (t , s) → f t`." Nothing
+      [ Hint "The right edge is the identity at $y$, so the whole triangle is just $f$, reparametrised. You only need one coordinate." Nothing
+      , Hint "Look at the bottom edge of the goal: `↦ f t`. That tells you to apply $f$ to the first coordinate — type `\\ (t , s) → f t`." (Just "↦ f t")
       ]
   , levelConclusion =
       "The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs."

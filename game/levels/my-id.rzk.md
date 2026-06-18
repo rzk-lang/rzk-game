@@ -1,8 +1,8 @@
 ---
 hints:
-- text: 'Look at the goal: both endpoints of the path are the same point $x$ (`↦ x` at each end), so you never need to move along the interval.'
-  when-goal: '↦ x'
-- text: 'Introduce the interval coordinate and ignore it — return $x$ whatever the coordinate: `\ t → x`.'
+- text: 'Both endpoints of the path are the same point $x$, so you never need to move along the interval.'
+- text: 'Right now the goal is still the whole path type `(t : 2 | Δ¹ t) → …`. Your first move is to introduce the interval coordinate: tap `λ-intro` or type `\ t → ?`. Then return $x$.'
+  when-goal: 'Δ¹ t'
 id: my-id
 inventory:
 - 'x        : A'

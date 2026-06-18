@@ -873,16 +873,12 @@ updateModel = \case
     formatOnCheck .= b
     io_ (saveFormatOnCheck b)
   RevealHint -> withPuzzle $ \ix -> do
-    -- Reveal the next hint not already visible — whether hidden by count or not
-    -- yet auto-surfaced by its when-goal — so a tap always shows something new.
-    r <- use result
+    -- The button walks the plain hints one at a time; contextual (when-goal)
+    -- hints surface on their own, so the count never needs to pass the plain
+    -- hints (plus one "ask" to engage a level whose hints are all contextual).
+    let cap = max (plainHintCount (levelHints (nthLevel ix))) 1
     n <- use hintsShown
-    let lvl    = nthLevel ix
-        hidden = [ i | i <- [0 .. length (levelHints lvl) - 1]
-                     , not (hintVisible lvl (focusedGoal r) n i) ]
-    case hidden of
-      (i : _) -> hintsShown .= i + 1
-      []      -> pure ()
+    if n < cap then hintsShown .= n + 1 else pure ()
   where
     -- Apply the formatter only when format-on-check is on, leaving the text as
     -- typed otherwise. The formatter itself no-ops on a non-parsing fragment.
@@ -1376,48 +1372,38 @@ focusedGoal :: CheckResult -> Maybe T.Text
 focusedGoal (Holes (h : _)) = Just (hvGoal h)
 focusedGoal _               = Nothing
 
--- | Whether hint @i@ of a level is currently visible. A hint shows once the
--- player has revealed it by the ordered reveal (its index is below the revealed
--- count). Additionally, once the player has asked for /any/ hint, a hint whose
--- @when-goal@ matches the focused hole's goal is auto-surfaced — so the
--- contextually relevant hint appears, but nothing is shown on a pristine level
--- the player has not engaged with ("hidden by default").
-hintVisible :: Level -> Maybe T.Text -> Int -> Int -> Bool
-hintVisible lvl mgoal revealed i =
-  i < revealed
-    || (revealed > 0 && maybe False (hintMatchesGoal (nthHint lvl i)) mgoal)
-
--- | Index a level's hints. (Miso's DSL re-exports @(!!)@ as a JS property
--- accessor, shadowing Prelude's list index, so we avoid it — see 'nthLevel'.)
-nthHint :: Level -> Int -> Hint
-nthHint lvl i = head (drop i (levelHints lvl))
-
--- | The hint panel: every hint currently visible, each rendered as prose, with a
--- button to reveal the next hidden one. Hidden entirely on a level with no
--- hints. The reveal button disappears once every hint is showing (and on a
--- solved level, where hints are moot).
+-- | The hint panel: the hints currently visible (plain hints up to the revealed
+-- count, plus any contextual when-goal hint whose trigger matches the focused
+-- goal), each rendered as prose. The reveal button walks the plain hints only —
+-- it never surfaces a contextual hint out of context — so it disappears once
+-- every plain hint is showing (and on a solved level, where hints are moot).
+-- Hidden entirely on a level with no hints.
 hintsView :: Model -> Level -> View Model Action
 hintsView m lvl
   | null hs   = text ""
   | otherwise =
       H.div_ [ P.class_ "hints" ]
         ( [ H.h3_ [] [ text "Hints" ] ]
-          <> [ hintCard i h | (i, h) <- zip [0 ..] hs, vis i ]
-          <> [ revealButton | hasHidden && notSolved ] )
+          <> [ hintCard i h | (i, h) <- vis ]
+          <> [ revealButton | showButton ] )
   where
-    hs        = levelHints lvl
-    mgoal     = focusedGoal (m ^. result)
-    n         = m ^. hintsShown
-    vis i     = hintVisible lvl mgoal n i
-    idxs      = [0 .. length hs - 1]
-    anyShown  = any vis idxs
-    hasHidden = any (not . vis) idxs
-    notSolved = case m ^. result of Solved -> False; _ -> True
+    hs         = levelHints lvl
+    mgoal      = focusedGoal (m ^. result)
+    n          = m ^. hintsShown
+    vis        = visibleHints hs mgoal n
+    plainN     = plainHintCount hs
+    hasCtx     = any ((/= Nothing) . hintWhenGoal) hs
+    notSolved  = case m ^. result of Solved -> False; _ -> True
+    -- A plain hint left to reveal, or a first "ask" to engage an all-contextual
+    -- level's goal-matched hints.
+    showButton = notSolved
+                   && (n < plainN || (plainN == 0 && n == 0 && hasCtx))
     revealButton =
       H.button_ [ P.class_ "hint-btn", H.onClick RevealHint ]
-        [ text (if anyShown then "💡 Show another hint" else "💡 Stuck? Show a hint") ]
+        [ text (if null vis then "💡 Stuck? Show a hint" else "💡 Show another hint") ]
     -- Each hint is injected as prose (Markdown/TeX via prose.js), keyed by slot
-    -- and index so the hook re-fires on navigation and as new hints appear.
+    -- and its position in the authored list so the hook re-fires on navigation
+    -- and as a contextual hint appears or disappears.
     hintCard i h =
       H.div_ [ P.class_ "hint prose"
              , key_ (ms ("hint-" <> show (_slotIx m) <> "-" <> show i))
