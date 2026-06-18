@@ -1,11 +1,11 @@
 ---
 id: const-triangle
-title: "The constant triangle"
-statement: "hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
 inventory:
-  - "x        : A"
-  - "id-hom   : (A : U) → (x : A) → hom A x x"
-  - "λ-intro  : introduce the two cube coordinates"
+- 'x        : A'
+- 'id-hom   : (A : U) → (x : A) → hom A x x'
+- 'λ-intro  : introduce the two cube coordinates'
+statement: hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)
+title: The constant triangle
 ---
 
 A `hom2` is a triangle: a map out of the 2-simplex $\Delta^2$. The simplest one is constant — every edge is the identity at a single point $x$. Introduce the two coordinates, then find the point of $A$ that sits on all three edges.

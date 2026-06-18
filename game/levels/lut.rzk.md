@@ -1,11 +1,11 @@
 ---
 id: lut
-title: "The left-unit triangle"
-statement: "hom2 A x x y (id-hom A x) f f"
 inventory:
-  - "f        : hom A x y"
-  - "id-hom   : (A : U) → (x : A) → hom A x x"
-  - "λ-intro  : introduce the cube coordinates"
+- 'f        : hom A x y'
+- 'id-hom   : (A : U) → (x : A) → hom A x x'
+- 'λ-intro  : introduce the cube coordinates'
+statement: hom2 A x x y (id-hom A x) f f
+title: The left-unit triangle
 ---
 
 Now the mirror image. Given $f : x \to y$, the triangle whose left edge is the identity at $x$ also has $f$ as its hypotenuse — but this time the degenerate copy of $f$ must vary in the other coordinate. Build it.

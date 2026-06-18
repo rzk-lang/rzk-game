@@ -1,11 +1,11 @@
 ---
 id: rut
-title: "The right-unit triangle"
-statement: "hom2 A x y y f (id-hom A y) f"
 inventory:
-  - "f        : hom A x y"
-  - "id-hom   : (A : U) → (x : A) → hom A x x"
-  - "λ-intro  : introduce the cube coordinates"
+- 'f        : hom A x y'
+- 'id-hom   : (A : U) → (x : A) → hom A x x'
+- 'λ-intro  : introduce the cube coordinates'
+statement: hom2 A x y y f (id-hom A y) f
+title: The right-unit triangle
 ---
 
 Now an edge becomes a genuine morphism. The hypotenuse of a `hom2` is the composite of its other two edges. Most triangles need $A$ to be Segal — but some are free. Given $f : x \to y$, the triangle whose right edge is the identity at $y$ has $f$ itself as its hypotenuse. This time the point must vary along the first coordinate. Build it.
