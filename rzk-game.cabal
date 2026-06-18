@@ -22,6 +22,7 @@ library
     RzkGame.Spec
     RzkGame.Loader
     RzkGame.Save
+    RzkGame.Format
   build-depends:
       base
     , aeson
