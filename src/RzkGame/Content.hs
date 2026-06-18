@@ -286,6 +286,17 @@ assocPrelude = segalPrelude <> T.unlines
 assocPreludeFor :: [Level] -> Text
 assocPreludeFor prev = assocPrelude <> T.concat (map levelSolution prev)
 
+-- | Append a "Useful here" block to a level's intro: the signatures of the
+-- lemmas the solution leans on, as a fenced @rzk@ code block (rendered as a
+-- monospaced box by @prose.js@). The full prelude is always available under
+-- "Prelude (given)", but it lists /everything/; this restates just the handful
+-- that matter for the level, so the player does not have to hunt. The block is
+-- display only — it is never typechecked — so the readable grouped-binder
+-- signatures (as in sHoTT) are fine even where a closed Π-type could not use
+-- them. (A type-directed inventory of fillers is future work, on the rzk side.)
+usefulHere :: [Text] -> Text
+usefulHere ls = "\n\n**Useful here:**\n\n```rzk\n" <> T.intercalate "\n" ls <> "\n```"
+
 -- | The warm-up: the identity morphism. A morphism @x → y@ is a path along the
 -- directed interval @Δ¹@; the identity is the constant path at @x@. One hole,
 -- a trivial tope context — the gentlest first contact with an extension type.
@@ -584,6 +595,11 @@ unfoldingSquareLevel = Level
   { levelTitle     = "Unfolding a triangle"
   , levelIntro     =
       "The associativity proof lives in the arrow type, and there the cells are *squares* $\\Delta^1\\times\\Delta^1 \\to A$, not triangles. A triangle fills only the lower half $s \\le t$ of the square. To fill the whole square, reflect the triangle across the diagonal: on the upper half $t \\le s$ reuse the same triangle with its two coordinates *swapped*. The `recOR` splits the square along the diagonal; fill each branch. No Segal hypothesis is needed — this is reparametrisation."
+      <> usefulHere
+           [ "triangle : Δ² → A           -- the lower-half triangle to unfold"
+           , "-- recOR glues two branches along covering topes:"
+           , "--   recOR ( t ≤ s ↦ … , s ≤ t ↦ … ) : A"
+           ]
   , levelStatement = "Δ¹×Δ¹ → A"
   , levelPrelude   = assocPreludeFor []
   , levelTemplate  = T.unlines
@@ -617,6 +633,14 @@ witnessSquareLevel = Level
   { levelTitle     = "The composition square"
   , levelIntro     =
       "Now use the unfolder. The Segal structure gives a *triangle* witnessing that the composite of $f$ and $g$ really is their composite. Unfold that triangle into a square, so it can later be read as an arrow in the arrow type. Apply `unfolding-square` to the composition witness."
+      <> usefulHere
+           [ "unfolding-square"
+           , "  : (A : U) → (Δ² → A) → Δ¹×Δ¹ → A"
+           , "witness-comp-is-segal"
+           , "  : (A : U) → (is-segal-A : is-segal A) → (x y z : A)"
+           , "  → (f : hom A x y) → (g : hom A y z)"
+           , "  → hom2 A x y z f g (comp-is-segal A is-segal-A x y z f g)"
+           ]
   , levelStatement = "Δ¹×Δ¹ → A"
   , levelPrelude   = assocPreludeFor [unfoldingSquareLevel]
   , levelTemplate  = T.unlines
@@ -656,6 +680,10 @@ idArrLevel = Level
   { levelTitle     = "An identity between arrows"
   , levelIntro     =
       "A new kind of target: the **arrow type** $\\mathsf{arr}\\,A = \\Delta^1 \\to A$, whose points are the arrows of $A$. A morphism *between* two arrows, $\\mathsf{hom}\\,(\\mathsf{arr}\\,A)\\,f\\,g$, is a path of arrows, and it takes two coordinates — the first, $t$, slides between arrows; the second, $s$, runs along the arrow sitting there. Start with the simplest one: the **identity** at $f$, the constant path that never leaves $f$. Ignore the path coordinate $t$ and return $f$ at its own coordinate $s$."
+      <> usefulHere
+           [ "arr A := Δ¹ → A             -- a point of arr A is an arrow"
+           , "f : arr A                   -- so f s : A for a coordinate s"
+           ]
   , levelStatement = "hom (arr A) f f"
   , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel]
   , levelTemplate  = T.unlines
@@ -691,6 +719,12 @@ arrInArrLevel = Level
   { levelTitle     = "An arrow between arrows"
   , levelIntro     =
       "Now the real thing. The warm-up built the *constant* path of arrows; here the arrow genuinely moves. Use the composition square: as the first coordinate $t$ slides from $0$ to $1$, the arrow slides from $f$ to $g$. Curry it exactly as before — introduce $t$ and $s$, then read off the square at $(t , s)$. This is the pivot of the whole proof: composition in $A$ becomes an arrow in $\\mathsf{arr}\\,A$."
+      <> usefulHere
+           [ "witness-square-comp-is-segal"
+           , "  : (A : U) → (is-segal-A : is-segal A) → (x y z : A)"
+           , "  → (f : hom A x y) → (g : hom A y z) → Δ¹×Δ¹ → A"
+           , "-- hom (arr A) f g is a path of arrows from f to g"
+           ]
   , levelStatement = "hom (arr A) f g"
   , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel, idArrLevel]
   , levelTemplate  = T.unlines
@@ -732,6 +766,16 @@ witnessAssocLevel = Level
   { levelTitle     = "Composing the witnesses"
   , levelIntro     =
       "The two composition arrows — one for $(f,g)$, one for $(g,h)$ — are composable arrows in $\\mathsf{arr}\\,A$. Since the arrow type is itself Segal (we take this as given; see the section note), they have a composition witness: a triangle `hom2 (arr A)` whose hypotenuse is their composite. Build it the same way as before, but one level up: apply `witness-comp-is-segal` in the arrow type to the two `arr-in-arr-is-segal` arrows."
+      <> usefulHere
+           [ "-- the same witness-comp-is-segal, applied with A := arr A and"
+           , "-- is-segal-A := is-segal-arr A is-segal-A:"
+           , "is-segal-arr A is-segal-A"
+           , "  : is-segal (arr A)"
+           , "arr-in-arr-is-segal A is-segal-A w x y f g"
+           , "  : hom (arr A) f g          -- the (f,g) composition arrow"
+           , "arr-in-arr-is-segal A is-segal-A x y z g h"
+           , "  : hom (arr A) g h          -- the (g,h) composition arrow"
+           ]
   , levelStatement = "hom2 (arr A) f g h …"
   , levelPrelude   = assocPreludeFor
       [unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel]
@@ -791,6 +835,11 @@ tetrahedronLevel = Level
   { levelTitle     = "The associativity tetrahedron"
   , levelIntro     =
       "The triangle of arrows, uncurried, is a prism $\\Delta^2\\times\\Delta^1 \\to A$. The $3$-simplex $\\Delta^3$ embeds in that prism by the *middle-simplex* map $((t,s),r) \\mapsto ((t,r),s)$ — swap the inner coordinate $s$ with the outer one $r$. Introduce the three coordinates of $\\Delta^3$, then apply the witness with them regrouped this way."
+      <> usefulHere
+           [ "witness-associative-is-segal A is-segal-A w x y z f g h"
+           , "  : hom2 (arr A) f g h … …   -- a curried prism, applied as (t , r) s"
+           , "-- middle-simplex map:  ((t , s) , r)  ↦  (t , r) s"
+           ]
   , levelStatement = "Δ³ → A"
   , levelPrelude   = assocPreludeFor
       [ unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel
@@ -832,6 +881,11 @@ tripleCompLevel = Level
   { levelTitle     = "The triple composite"
   , levelIntro     =
       "One arrow is left to read off. The tetrahedron's main diagonal runs from its first vertex $w$ to its last vertex $z$, traced by the fully degenerate point $((t,t),t)$. That diagonal *is* the composite $h\\circ g\\circ f$ of all three arrows. Introduce the interval coordinate and restrict the tetrahedron to its main diagonal."
+      <> usefulHere
+           [ "tetrahedron-associative-is-segal A is-segal-A w x y z f g h"
+           , "  : Δ³ → A"
+           , "-- the main diagonal is the point  ((t , t) , t)"
+           ]
   , levelStatement = "hom A w z"
   , levelPrelude   = assocPreludeFor
       [ unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel
