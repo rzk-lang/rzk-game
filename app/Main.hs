@@ -23,6 +23,7 @@ import           Miso.DSL           (jsg2)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
+import           Control.Exception  (SomeException, evaluate, try)
 import           Data.List          (find)
 import           Data.Map.Strict    (Map)
 import qualified Data.Map.Strict    as Map
@@ -40,7 +41,8 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      tetrahedronLevel, tripleCompLevel,
                                      unfoldingSquareLevel, witnessAssocLevel,
                                      witnessSquareLevel)
-import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
+import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
+                                     tokClassName)
 import           RzkGame.Level
 import           RzkGame.Section
 
@@ -195,6 +197,36 @@ hsSelftest = do
   putStrLn (T.unpack (renderResult (checkLevel hom2Level (refineFirstHole "asd" (levelTemplate hom2Level)))))
   putStrLn "== right-unit wrong branch: give s (expect TypeError) =="
   putStrLn (T.unpack (renderResult (checkLevel hom2Level (refineFirstHole "s" (levelTemplate hom2Level)))))
+  putStrLn "== diagnostics: a type error squiggles a line inside the editable region (expect OK) =="
+  -- The hom2 template is three editable lines; rzk attaches the error to the
+  -- enclosing #def's line, so the squiggled line(s) must fall in 1..3.
+  let editableSpanOf lvl = length (T.lines (levelTemplate lvl))
+      inEditable lvl ls  = not (null ls) && all (\l -> l >= 1 && l <= editableSpanOf lvl) ls
+      typeErrLines lvl e = case checkLevel lvl (refineFirstHole e (levelTemplate lvl)) of
+        TypeError _ ls -> Just ls
+        _              -> Nothing
+      garbageOK = maybe False (inEditable hom2Level) (typeErrLines hom2Level "asd")
+      branchOK  = maybe False (inEditable hom2Level) (typeErrLines hom2Level "s")
+  putStrLn ("   garbage 'asd' -> lines " <> show (typeErrLines hom2Level "asd"))
+  putStrLn ("   wrong branch 's' -> lines " <> show (typeErrLines hom2Level "s"))
+  putStrLn (if garbageOK && branchOK then "error lines: OK" else "ERROR LINES FAILED")
+  putStrLn "== diagnostics: a parse error reports its editable line (expect OK) =="
+  -- A malformed one-line editable region fails to parse on its only line (1). The
+  -- whole check is forced inside 'try': rzk's layout resolver reports some
+  -- malformed input by throwing (a pure 'error'), which 'checkLevel' does not
+  -- catch, so a throw is tolerated here rather than aborting the self-test.
+  let parseInput = "#def rut : U := )"
+  parseProbe <- try (evaluate
+    (case checkLevel hom2Level parseInput of
+       ParseError _ (Just l) -> l == 1
+       ParseError _ Nothing  -> True    -- reported, line just not extracted
+       _                     -> False))
+      :: IO (Either SomeException Bool)
+  case parseProbe of
+    Left _   -> putStrLn "   (the parser threw on this input; tolerated)"
+    Right ok -> putStrLn ("   malformed body -> line maps correctly: " <> show ok)
+  putStrLn (if either (const True) id parseProbe
+              then "parse line: OK" else "PARSE LINE FAILED")
   putStrLn "== right-unit smart inventory: moves for the template hole =="
   case checkLevel hom2Level (levelTemplate hom2Level) of
     Holes (h : _) -> mapM_ (putStrLn . T.unpack . showMove) (holeActions h)
@@ -767,7 +799,7 @@ puzzleSlotView m sid ix z =
       | otherwise =
           pretestControls m z
           <> [ H.h3_ [] [ text "Your proof" ]
-             , editorView (m ^. editable)
+             , editorView (m ^. editable) (resultErrorLines (m ^. result))
              , H.h3_ [] [ text "Moves" ]
              , movesView m
              , H.div_ [ P.class_ "buttons" ]
@@ -895,13 +927,18 @@ preludeView lvl =
 -- textarea, so the two stay the same height (even on manual resize). Both share
 -- identical metrics in CSS, so the coloured layer lines up with the text the
 -- player types. The tokeniser is lossless, so no character is dropped or added.
-editorView :: MisoString -> View Model Action
-editorView code =
+--
+-- Each logical line is wrapped in its own inline @<span>@, with the @\n@
+-- separators re-inserted as text between them (so the layer still matches the
+-- textarea character for character). A line carrying a diagnostic gets the
+-- @hl-errline@ class, which draws a wavy underline — the error squiggle. rzk
+-- reports locations at line granularity, so a whole line is underlined.
+editorView :: MisoString -> [Int] -> View Model Action
+editorView code errLines =
   H.div_ [ P.class_ "editor-wrap" ]
     [ H.pre_ [ P.class_ "editor-hl" ]
-        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
-        | Tok cls txt <- highlight (fromMisoString code)
-        ]
+        (intersperseNewlines
+           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ])
     , H.textarea_
         [ P.class_ "editor"
         , P.rows_ "6"
@@ -909,6 +946,21 @@ editorView code =
         , H.onInput SetEditable
         ]
     ]
+  where
+    errSet = Set.fromList errLines
+    lineSpan i toks =
+      H.span_ [ P.class_ (ms (lineCls i)) ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- toks
+        ]
+    lineCls :: Int -> T.Text
+    lineCls i = "hl-line" <> if Set.member i errSet then " hl-errline" else ""
+    -- Put a literal newline back between the per-line spans (none after the last),
+    -- so the rendered text reproduces the source exactly.
+    intersperseNewlines = \case
+      []       -> []
+      [v]      -> [v]
+      (v : vs) -> v : text "\n" : intersperseNewlines vs
 
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is
@@ -996,12 +1048,13 @@ slotLabel (SlotPuzzle _ ix z) = tshow (ix + 1) <> ". " <> levelTitle (puzzleLeve
 
 resultView :: CheckResult -> View Model Action
 resultView = \case
-  NotChecked   -> H.pre_ [] [ text "(press Check)" ]
-  ParseError e -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
+  NotChecked     -> H.pre_ [] [ text "(press Check)" ]
+  ParseError e _ -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
   -- The rzk type-error formatter is verbose (a "when typechecking …" trace per
   -- lambda layer). Lead with a friendly line and keep the full report in a
-  -- height-capped, scrollable box so it does not run down the page.
-  TypeError e  ->
+  -- height-capped, scrollable box so it does not run down the page. The line(s)
+  -- the error points at are squiggled in the editor above (see 'editorView').
+  TypeError e _  ->
     H.div_ [ P.class_ "err" ]
       [ H.p_  [] [ text "This proof doesn't typecheck yet:" ]
       , H.pre_ [ P.class_ "errdump" ] [ text (ms e) ]
