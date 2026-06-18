@@ -13,6 +13,7 @@ module RzkGame.Highlight
   ( TokClass (..)
   , Tok (..)
   , highlight
+  , highlightLines
   , tokClassName
   ) where
 
@@ -66,6 +67,14 @@ plainLen = go 0
         | c `elem` breakChars                    -> n
         | c == '-', Just ('-', _) <- T.uncons s' -> n
         | otherwise                              -> go (n + 1) s'
+
+-- | Tokenise source one logical line at a time, so the editor overlay can wrap
+-- each line in its own element (to squiggle an error line). Splitting on @\n@
+-- first is lossless — @T.intercalate \"\\n\"@ inverts it — and each line lexes
+-- the same as it would in context, since no token (a comment included) spans a
+-- newline within a single line. The caller re-inserts the @\n@ separators.
+highlightLines :: Text -> [[Tok]]
+highlightLines = map highlight . T.splitOn "\n"
 
 -- | CSS class for a token category (paired with the rules in static/index.html).
 tokClassName :: TokClass -> Text

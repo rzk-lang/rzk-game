@@ -73,6 +73,11 @@
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }
     .tok-op      { color: #0a7d62; }
+    /* An error squiggle: rzk reports line-level locations, so the whole offending
+       line is drawn with a wavy red underline. The line is an inline span in the
+       highlight layer, so the underline tracks the text even when it wraps. */
+    .hl-errline { text-decoration: underline wavy #d6336c;
+                  text-decoration-skip-ink: none; text-underline-offset: .15em; }
     /* The level map lays items out as compact icon tiles (rounded squares). The
        icon names the role; the corner number and the title tooltip identify the
        item; classes carry state. This stays succinct as items multiply. */
