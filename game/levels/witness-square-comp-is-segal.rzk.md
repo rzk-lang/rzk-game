@@ -1,4 +1,5 @@
 ---
+gated: true
 id: witness-square-comp-is-segal
 inventory:
 - 'unfolding-square    : (A : U) → (Δ² → A) → Δ¹×Δ¹ → A'

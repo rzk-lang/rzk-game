@@ -22,6 +22,8 @@ module RzkGame.Level
   , hintMatchesGoal
   , visibleHints
   , plainHintCount
+  , inventoryViolations
+  , gatePassed
   ) where
 
 import           Data.Char            (isDigit, isSpace)
@@ -30,6 +32,8 @@ import           Data.Maybe           (mapMaybe, maybeToList)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Text.Read            (readMaybe)
+
+import           RzkGame.Highlight    (Tok (..), TokClass (Plain), highlight)
 
 import           Language.Rzk.Syntax  (parseModule)
 import           Rzk.Diagnostic       (locationOfTypeError)
@@ -51,6 +55,7 @@ data Level = Level
   , levelGoalType   :: Text   -- ^ its required (closed) type, enforced on check
   , levelInventory  :: [Text] -- ^ names available to the player
   , levelHints      :: [Hint] -- ^ authored hints, revealed on request
+  , levelGated      :: Bool   -- ^ make an inventory violation fail the check
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -166,6 +171,62 @@ toHoleView HoleInfo{..} = HoleView
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+-- | The /inventory gating/ check: the prelude lemmas the editable region uses
+-- in its proof but that the level does not grant. rzk has no usage restriction,
+-- so this is computed in the engine, not the type-checker.
+--
+-- We intersect three name sets: the names the prelude /defines/
+-- ('preludeDefinedNames', the @#def@/@#postulate@ heads), the names the editable
+-- proof /references/ ('referencedNames'), and the level's allow-list (the
+-- leading token of each 'levelInventory' entry). A name that is prelude-defined
+-- and used but not granted is a violation.
+--
+-- Two deliberate restrictions keep a violation to a /real/ prelude lemma. First,
+-- only the proof /bodies/ are scanned (the text after each @:=@), never the type
+-- signatures, so the type formers a goal mentions (@hom@, @hom2@, @Δ¹@, …) are
+-- not flagged. Second, intersecting with the prelude-defined names drops local
+-- hypotheses and rzk keywords, which are never prelude-defined. A level with an
+-- empty inventory gates nothing (the inventory was unused before Phase 5), so the
+-- old behaviour is preserved.
+inventoryViolations :: Level -> Text -> [Text]
+inventoryViolations lvl editable
+  | null (levelInventory lvl) = []
+  | otherwise =
+      nub [ n | n <- referencedNames editable
+              , n `elem` defined, n `notElem` allowed ]
+  where
+    defined = preludeDefinedNames (levelPrelude lvl)
+    allowed = mapMaybe firstToken (levelInventory lvl)
+    firstToken e = case T.words e of (n : _) -> Just n; [] -> Nothing
+
+-- | The names a prelude /defines/: the first word after each @#def@ or
+-- @#postulate@ command. Continuation lines (indented, no command) are skipped.
+preludeDefinedNames :: Text -> [Text]
+preludeDefinedNames = mapMaybe defName . T.lines
+  where
+    defName line = case T.words (T.stripStart line) of
+      (cmd : n : _) | cmd `elem` ["#def", "#postulate"] -> Just n
+      _                                                 -> Nothing
+
+-- | The identifiers a proof /body/ references. The body is the text after each
+-- @:=@ up to the next command (@#@), so type signatures are excluded. We reuse
+-- the lossless 'highlight' tokeniser and read the words out of its 'Plain'
+-- tokens, rather than re-lexing by hand.
+referencedNames :: Text -> [Text]
+referencedNames src =
+  [ w | Tok Plain t <- highlight (proofBodies src), w <- T.words t ]
+  where
+    proofBodies = T.unwords . map (fst . T.breakOn "#") . drop 1 . T.splitOn ":="
+
+-- | Whether the editable region passes the level's gate: trivially true on a
+-- level that does not opt into 'levelGated', otherwise true only when there are
+-- no inventory violations. A gated level with a violation does not count as
+-- solved even if it type-checks (the UI surfaces the violation as the blocker);
+-- a non-gated level only ever shows a soft notice, so its solve still stands.
+gatePassed :: Level -> Text -> Bool
+gatePassed lvl editable =
+  not (levelGated lvl) || null (inventoryViolations lvl editable)
 
 -- | Best-effort line number from a parse error message. rzk's parser formats its
 -- errors as @"syntax error at line L column C …"@ (and layout errors likewise),

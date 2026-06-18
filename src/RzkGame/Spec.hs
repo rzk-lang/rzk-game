@@ -166,10 +166,11 @@ data Meta = Meta
   , metaStatement :: Text
   , metaInventory :: [Text]
   , metaHints     :: [Hint]
+  , metaGated     :: Bool
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" [] []
+emptyMeta = Meta "" "" Nothing "" [] [] False
 
 instance FromJSON Meta where
   parseJSON = withObject "Meta" $ \o -> Meta
@@ -179,6 +180,7 @@ instance FromJSON Meta where
     <*> o .:? "statement" .!= ""
     <*> o .:? "inventory" .!= []
     <*> (o .:? "hints" .!= [] >>= traverse parseHint)
+    <*> o .:? "gated" .!= False
 
 -- | Read one front-matter hint: @{ text, when-goal? }@. The 'Hint' type lives in
 -- 'RzkGame.Level', so we decode it here without an orphan 'FromJSON' instance.
