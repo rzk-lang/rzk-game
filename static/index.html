@@ -146,6 +146,57 @@
     .ctx .name { color: #225; }
     .ctx .type { color: #555; }
     .muted { color: #888; font-style: italic; }
+    /* Grouped, sectioned level picker. Each section is a titled block with a
+       progress count and a row of slot buttons. */
+    .sections { display: flex; flex-direction: column; gap: .5rem;
+                margin: .2rem 0 .4rem; }
+    .section-block { border: 1px solid #eee; border-radius: 8px; padding: .4rem .5rem;
+                     background: #fafafa; }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between;
+                    gap: .5rem; margin-bottom: .35rem; }
+    .section-title { font-weight: 600; color: #333; font-size: .9rem; }
+    .section-count { font-size: .78rem; color: #888; font-variant-numeric: tabular-nums; }
+    .section-count.done { color: #2a7a2a; font-weight: 600; }
+    /* Prose ("text pseudo-level") buttons read differently from puzzle buttons. */
+    .levels button.slot-prose { background: #eef3fb; border-color: #c2d2ea; color: #2c3e57;
+                                font-style: italic; }
+    .levels button.slot-prose.current { background: #d8e6fb; border-color: #79c; font-weight: 600; }
+    .levels button.slot-prose.done { background: #eaf6ea; border-color: #bcdcbc; color: #285028; }
+    .levels button.slot-puzzle.locked { background: #f3f0f0; border-color: #d8c9c9; color: #887766; }
+    .levels button.slot-puzzle.star { border-style: dashed; }
+    /* Section breadcrumb atop each slot page. */
+    .breadcrumb { margin: .1rem 0 .3rem; font-size: .8rem; color: #888;
+                  text-transform: none; }
+    /* A standalone prose page (a text pseudo-level). */
+    .prose-page { margin: .4rem 0; padding: .8rem 1rem; background: #f7f9fc;
+                  border: 1px solid #e3e9f2; border-radius: 8px; }
+    .viewed-note { margin: .2rem 0; color: #2a7a2a; font-size: .85rem; font-weight: 600;
+                   min-height: 1.1rem; }
+    .section-complete { margin: .5rem 0; padding: .5rem .7rem; background: #eafaea;
+                        border: 1px solid #b9e0b9; border-radius: 6px;
+                        color: #285028; font-weight: 600; }
+    /* Pre-test self-assessment. */
+    .pretest { margin: .5rem 0; padding: .6rem .7rem; background: #fff8e8;
+               border: 1px solid #ecd9a6; border-radius: 8px; }
+    .pretest-q { margin: 0 0 .4rem; font-weight: 600; color: #6a5a22; }
+    .pretest-btns { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .pretest-btn { background: #fff; color: #444; border: 1px solid #ccc;
+                   border-radius: 6px; cursor: pointer; }
+    .pretest-btn:hover { border-color: #999; }
+    .pretest-btn.chosen { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+    /* Lock panel and remediation links (shown when a prereq is "not familiar"). */
+    .locked { margin: .5rem 0; padding: .7rem .8rem; background: #f7f1f1;
+              border: 1px solid #e0cccc; border-radius: 8px; }
+    .locked > p { margin: 0 0 .5rem; font-weight: 600; color: #7a4a4a; }
+    .remedy { margin: .3rem 0 .6rem; display: flex; flex-direction: column;
+              gap: .25rem; align-items: flex-start; }
+    .remedy-head { margin: 0 0 .1rem; font-size: .85rem; color: #555; font-weight: 600; }
+    a.remedy-link { color: #2563eb; text-decoration: none; font-size: .9rem; }
+    a.remedy-link:hover { text-decoration: underline; }
+    button.remedy-link { background: #eef; color: #2563eb; border: 1px solid #c2c2ea;
+                         border-radius: 6px; cursor: pointer; font-size: .85rem;
+                         padding: .25rem .6rem; margin: 0; }
+    button.remedy-link:hover { background: #e0e0fb; }
   </style>
 </head>
 <body>
