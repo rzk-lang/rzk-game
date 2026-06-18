@@ -21,6 +21,7 @@ library
     RzkGame.Highlight
     RzkGame.Spec
     RzkGame.Loader
+    RzkGame.Save
   build-depends:
       base
     , aeson
