@@ -32,11 +32,13 @@ import qualified Data.Set           as Set
 import qualified Data.Text          as T
 import           Text.Read          (readMaybe)
 
-import           RzkGame.Content    (apHomLevel, composeLevel,
+import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      composeWitnessLevel, constTriangleLevel,
                                      gameLevels, gameSections, gameSlots,
                                      hom2Level, homLeftUnitLevel, idMorphismLevel,
-                                     mapPointLevel)
+                                     mapPointLevel, tetrahedronLevel,
+                                     tripleCompLevel, unfoldingSquareLevel,
+                                     witnessAssocLevel, witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 import           RzkGame.Section
@@ -233,6 +235,28 @@ hsSelftest = do
   putStrLn "== compose-witness tap chain: spine then x y z f g (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain composeWitnessLevel ["second (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
+  putStrLn "== unfolding-square: give the diagonal-split recOR (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain unfoldingSquareLevel
+      ["recOR ( t ≤ s ↦ triangle (s , t) , s ≤ t ↦ triangle (t , s) )"])))
+  putStrLn "== witness-square: give the composition witness (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain witnessSquareLevel ["witness-comp-is-segal A is-segal-A x y z f g"])))
+  putStrLn "== arr-in-arr: apply the square at (t , s) (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain arrInArrLevel ["witness-square-comp-is-segal A is-segal-A x y z f g (t , s)"])))
+  putStrLn "== witness-associative ★: compose the witnesses in arr A (expect Solved) =="
+  let witnessAssocFill = T.concat
+        [ "witness-comp-is-segal (arr A) (is-segal-arr A is-segal-A) f g h "
+        , "(arr-in-arr-is-segal A is-segal-A w x y f g) "
+        , "(arr-in-arr-is-segal A is-segal-A x y z g h)" ]
+  putStrLn (T.unpack (renderResult (tapChain witnessAssocLevel [witnessAssocFill])))
+  putStrLn "== tetrahedron: regroup to the middle simplex (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain tetrahedronLevel ["witness-associative-is-segal A is-segal-A w x y z f g h (t , r) s"])))
+  putStrLn "== triple-comp: restrict to the main diagonal (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain tripleCompLevel ["((t , t) , t)"])))
   putStrLn "== soundness: an empty proof is never Solved (expect OK) =="
   putStrLn (if all (\lvl -> checkLevel lvl "" /= Solved) gameLevels
               then "empty-not-solved: OK" else "EMPTY-NOT-SOLVED FAILED")
@@ -257,7 +281,7 @@ hsSelftest = do
   putStrLn (if roundTrips && emptyOk && junkDropped
               then "progress codec: OK" else "PROGRESS CODEC FAILED")
   putStrLn "== viewed codec: encode/decode round-trips =="
-  let viewedSet  = Set.fromList ["morphisms-intro", "composition-assoc"]
+  let viewedSet  = Set.fromList ["morphisms-intro", "associativity-arr-segal"]
       viewedOk   = decodeTextSet (encodeTextSet viewedSet) == viewedSet
       viewedEmpt = decodeTextSet (encodeTextSet Set.empty) == Set.empty
   putStrLn (if viewedOk && viewedEmpt then "viewed codec: OK" else "VIEWED CODEC FAILED")
@@ -269,7 +293,10 @@ hsSelftest = do
   putStrLn "== sections: derived gameLevels matches the section puzzle order (expect OK) =="
   let puzzleIds  = [ puzzleId z | SPuzzle z <- concatMap sectionItems gameSections ]
       orderOk    = puzzleIds == ["my-id", "const-triangle", "rut", "lut"
-                                , "map-point", "ap-hom", "compose", "compose-witness"]
+                                , "map-point", "ap-hom", "compose", "compose-witness"
+                                , "unfolding-square", "witness-square-comp-is-segal"
+                                , "arr-in-arr-is-segal", "witness-associative-is-segal"
+                                , "tetrahedron-associative-is-segal", "triple-comp-is-segal"]
       derivedOk  = map levelTitle [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections ]
                      == map levelTitle gameLevels
   putStrLn (if orderOk && derivedOk then "section order: OK" else "SECTION ORDER FAILED")

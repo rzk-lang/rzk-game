@@ -18,6 +18,12 @@ module RzkGame.Content
   , apHomLevel
   , composeLevel
   , composeWitnessLevel
+  , unfoldingSquareLevel
+  , witnessSquareLevel
+  , arrInArrLevel
+  , witnessAssocLevel
+  , tetrahedronLevel
+  , tripleCompLevel
   ) where
 
 import           Data.Text     (Text)
@@ -28,8 +34,11 @@ import           RzkGame.Section
 
 -- | The levels, in play order, easiest first, derived from 'gameSections'. The
 -- global order is @[my-id, const-triangle, rut, lut, map-point, ap-hom, compose,
--- compose-witness]@; preserve it, since progress and drafts are keyed by this
--- index (see the handoff note).
+-- compose-witness, unfolding-square, witness-square-comp-is-segal,
+-- arr-in-arr-is-segal, witness-associative-is-segal,
+-- tetrahedron-associative-is-segal, triple-comp-is-segal]@; preserve the prefix,
+-- since progress and drafts are keyed by this index (see the handoff note). New
+-- levels are appended, so the existing indices are untouched.
 gameLevels :: [Level]
 gameLevels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections ]
 
@@ -62,10 +71,25 @@ gameSections =
   , Section "composition" "Composition in Segal types"
       [ SProse  proseCompositionIntro
       , SPuzzle (core "compose" composeLevel)
-      , SProse  proseAssociativityNote
       , SPuzzle ((core "compose-witness" composeWitnessLevel)
                    { puzzlePrereqs = ["compose"] })
       , SProse  proseCompositionSummary
+      ]
+  , Section "associativity" "Associativity in Segal types"
+      [ SProse  proseAssociativityIntro
+      , SPuzzle (core "unfolding-square" unfoldingSquareLevel)
+      , SPuzzle ((core "witness-square-comp-is-segal" witnessSquareLevel)
+                   { puzzlePrereqs = ["compose-witness"] })
+      , SPuzzle ((core "arr-in-arr-is-segal" arrInArrLevel)
+                   { puzzlePrereqs = ["compose-witness"] })
+      , SProse  proseArrIsSegalNote
+      , SPuzzle ((extra "witness-associative-is-segal" witnessAssocLevel)
+                   { puzzlePrereqs = ["compose-witness"] })
+      , SPuzzle ((core "tetrahedron-associative-is-segal" tetrahedronLevel)
+                   { puzzlePrereqs = ["compose-witness"] })
+      , SPuzzle ((core "triple-comp-is-segal" tripleCompLevel)
+                   { puzzlePrereqs = ["compose-witness"] })
+      , SProse  proseAssociativitySummary
       ]
   ]
 
@@ -138,19 +162,47 @@ proseCompositionIntro = Prose "composition-intro" "Start here" (Just BridgeIn) $
   , "the triangle that witnesses it."
   ]
 
--- | A mid-section aside (a prose pseudo-level that sits /between/ two puzzles),
--- previewing associativity and linking the sHoTT source. We do not build the
--- associativity levels here; this note points the way.
-proseAssociativityNote :: Prose
-proseAssociativityNote = Prose "composition-assoc" "Aside: associativity" (Just Note) $ T.concat
-  [ "**Looking ahead: associativity.** Once composition exists, the natural "
-  , "question is whether $(h \\circ g) \\circ f = h \\circ (g \\circ f)$. In a "
-  , "Segal type it does, by a slick argument: the composition witnesses become "
+-- | The bridge into the associativity module. Once composition exists, the
+-- natural question is whether it is associative; in a Segal type it is, by a
+-- slick argument that this module builds step by step.
+proseAssociativityIntro :: Prose
+proseAssociativityIntro = Prose "associativity-intro" "Start here" (Just BridgeIn) $ T.concat
+  [ "Once composition exists, the natural question is whether "
+  , "$(h \\circ g) \\circ f = h \\circ (g \\circ f)$. In a Segal type it is, by a "
+  , "slick argument due to Riehl and Shulman: the composition witnesses become "
   , "arrows in the arrow type $\\mathsf{arr}\\,A$, which is *itself* Segal, so "
   , "composing them builds a $3$-simplex (a tetrahedron) whose uniqueness forces "
-  , "both bracketings to agree. We do not prove it here — see the "
+  , "both bracketings to agree.\n\n"
+  , "*By the end you will be able to:* unfold a triangle into a square, lift "
+  , "composition into the arrow type, and extract the associativity tetrahedron "
+  , "and the triple composite. The witness-assembly level is marked ★ — the most "
+  , "clerical step, optional. We follow the "
   , "[sHoTT chapter on associativity]"
   , "(https://rzk-lang.github.io/sHoTT/simplicial-hott/05-segal-types.rzk/#associativity)."
+  ]
+
+-- | The one assumption the module adds, stated plainly where it is first used.
+proseArrIsSegalNote :: Prose
+proseArrIsSegalNote = Prose "associativity-arr-segal" "Aside: one assumption" (Just Note) $ T.concat
+  [ "**One fact taken on faith.** The argument needs that the arrow type "
+  , "$\\mathsf{arr}\\,A$ of a Segal type is *itself* Segal. This is a theorem of "
+  , "Riehl and Shulman, but its proof goes through the closure of Segal types "
+  , "under extension types, which rests on extension extensionality — machinery "
+  , "an order of magnitude larger than the reparametrisations this module is "
+  , "about. So we postulate it (`is-segal-arr`) and keep the focus on the "
+  , "geometry. It is the only assumption added here; everything else you build by "
+  , "hand."
+  ]
+
+-- | The module wrap-up.
+proseAssociativitySummary :: Prose
+proseAssociativitySummary = Prose "associativity-summary" "Wrap-up" (Just Summary) $ T.concat
+  [ "You lifted composition into the arrow type, composed the witnesses there, "
+  , "and read the triple composite off the main diagonal of the resulting "
+  , "tetrahedron. Its two faces present that composite as both $(h\\circ g)\\circ "
+  , "f$ and $h\\circ(g\\circ f)$, so uniqueness of Segal composites makes the two "
+  , "bracketings equal. That is associativity — and with it, a Segal type really "
+  , "does behave like an $(\\infty,1)$-category."
   ]
 
 proseCompositionSummary :: Prose
@@ -189,6 +241,44 @@ segalPrelude = prelude <> T.unlines
   , "  := (x : A) → (y : A) → (z : A) → (f : hom A x y) → (g : hom A y z)"
   , "   → is-contr (Σ (h : hom A x z) , hom2 A x y z f g h)"
   ]
+
+-- | The prelude for the associativity levels. It extends the Segal one with the
+-- machinery the associativity proof needs: the composition operators
+-- @comp-is-segal@ / @witness-comp-is-segal@ (built by hand in the previous
+-- section, here taken as given), the @3@-simplex @Δ³@ and the square @Δ¹×Δ¹@,
+-- the arrow type @arr A@, and the one fact we take on faith — that the arrow
+-- type of a Segal type is itself Segal (@is-segal-arr@).
+--
+-- Following Riehl and Shulman, @is-segal-arr@ is a theorem: it follows from the
+-- closure of Segal types under extension types, which in turn needs extension
+-- extensionality (@extext@). That proof is an order of magnitude larger than the
+-- geometry these levels are about, so we 'postulate' it and focus on the
+-- reparametrisations. This is the only assumption the section adds.
+assocPrelude :: Text
+assocPrelude = segalPrelude <> T.unlines
+  [ "#def Δ³ : (2 × 2 × 2) → TOPE"
+  , "  := \\ ((t1 , t2) , t3) → t3 ≤ t2 ∧ t2 ≤ t1"
+  , "#def Δ¹×Δ¹ : (2 × 2) → TOPE := \\ (t , s) → TOP ∧ TOP"
+  , "#def comp-is-segal"
+  , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+  , "  (f : hom A x y) (g : hom A y z) : hom A x z"
+  , "  := first (first (is-segal-A x y z f g))"
+  , "#def witness-comp-is-segal"
+  , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+  , "  (f : hom A x y) (g : hom A y z)"
+  , "  : hom2 A x y z f g (comp-is-segal A is-segal-A x y z f g)"
+  , "  := second (first (is-segal-A x y z f g))"
+  , "#def arr (A : U) : U := Δ¹ → A"
+  , "#postulate is-segal-arr"
+  , "  : (A : U) → (is-segal-A : is-segal A) → is-segal (arr A)"
+  ]
+
+-- | The associativity levels stack: each builds on the definitions the player
+-- produced in the earlier levels. We reuse those reference solutions verbatim as
+-- the read-only prelude for the levels that follow, so a level's prelude is
+-- exactly the section's accepted answers so far.
+assocPreludeFor :: [Level] -> Text
+assocPreludeFor prev = assocPrelude <> T.concat (map levelSolution prev)
 
 -- | The warm-up: the identity morphism. A morphism @x → y@ is a path along the
 -- directed interval @Δ¹@; the identity is the constant path at @x@. One hole,
@@ -473,4 +563,259 @@ composeWitnessLevel = Level
       "The composite and its witnessing triangle are the two halves of one \
       \centre of contraction. Together they say: in a Segal type, composition \
       \exists and the triangle proving it is there for free."
+  }
+
+-- | Unfolding a triangle into a square. The associativity proof works in the
+-- arrow type @arr A@, and its building blocks are squares @Δ¹×Δ¹ → A@ rather
+-- than triangles @Δ² → A@. A triangle covers only the lower half @s ≤ t@ of the
+-- square; to fill the whole square we reflect it across the diagonal, reusing
+-- the same triangle with its coordinates swapped on the upper half. This is pure
+-- reparametrisation — no Segal hypothesis — and a first use of @recOR@ to split
+-- on which side of the diagonal a point lies. Solution: on @s ≤ t@ keep
+-- @triangle (t , s)@; on @t ≤ s@ use the reflected @triangle (s , t)@.
+unfoldingSquareLevel :: Level
+unfoldingSquareLevel = Level
+  { levelTitle     = "Unfolding a triangle"
+  , levelIntro     =
+      "The associativity proof lives in the arrow type, and there the cells are *squares* $\\Delta^1\\times\\Delta^1 \\to A$, not triangles. A triangle fills only the lower half $s \\le t$ of the square. To fill the whole square, reflect the triangle across the diagonal: on the upper half $t \\le s$ reuse the same triangle with its two coordinates *swapped*. Build a `recOR` that splits the square along the diagonal — keep `triangle (t , s)` on $s \\le t$ and the reflected `triangle (s , t)` on $t \\le s$. No Segal hypothesis is needed; this is reparametrisation."
+  , levelStatement = "Δ¹×Δ¹ → A"
+  , levelPrelude   = assocPreludeFor []
+  , levelTemplate  = T.unlines
+      [ "#def unfolding-square (A : U) (triangle : Δ² → A)"
+      , "  : Δ¹×Δ¹ → A"
+      , "  := \\ (t , s) → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def unfolding-square (A : U) (triangle : Δ² → A)"
+      , "  : Δ¹×Δ¹ → A"
+      , "  := \\ (t , s) → recOR ( t ≤ s ↦ triangle (s , t) , s ≤ t ↦ triangle (t , s) )"
+      ]
+  , levelGoalName  = "unfolding-square"
+  , levelGoalType  = "(A : U) → (triangle : Δ² → A) → Δ¹×Δ¹ → A"
+  , levelInventory =
+      [ "triangle : Δ² → A"
+      , "recOR    : split on a pair of covering topes (here t ≤ s / s ≤ t)"
+      , "(s , t)  : the swapped coordinate, reflecting across the diagonal"
+      ]
+  , levelConclusion =
+      "A square is two copies of one triangle glued along the diagonal — the original on $s \\le t$ and its reflection on $t \\le s$. The two branches agree on the diagonal $s \\equiv t$, where both read $\\mathsf{triangle}\\,(t,t)$, so `recOR` is well-defined. We can now unfold any triangle into a square."
+  }
+
+-- | The composition witness, unfolded into a square. The previous level built
+-- the unfolder; here we feed it the composition witness triangle from the Segal
+-- structure. The result is the square cell that, read as an arrow in the arrow
+-- type, witnesses composition there. Solution: hand @witness-comp-is-segal@ to
+-- @unfolding-square@.
+witnessSquareLevel :: Level
+witnessSquareLevel = Level
+  { levelTitle     = "The composition square"
+  , levelIntro     =
+      "Now use the unfolder. The Segal structure gives a *triangle* witnessing that the composite of $f$ and $g$ really is their composite. Unfold that triangle into a square, so it can later be read as an arrow in the arrow type. Apply `unfolding-square` to the composition witness."
+  , levelStatement = "Δ¹×Δ¹ → A"
+  , levelPrelude   = assocPreludeFor [unfoldingSquareLevel]
+  , levelTemplate  = T.unlines
+      [ "#def witness-square-comp-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : Δ¹×Δ¹ → A"
+      , "  := unfolding-square A (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def witness-square-comp-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : Δ¹×Δ¹ → A"
+      , "  := unfolding-square A (witness-comp-is-segal A is-segal-A x y z f g)"
+      ]
+  , levelGoalName  = "witness-square-comp-is-segal"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A x y) → (g : hom A y z) → Δ¹×Δ¹ → A"
+  , levelInventory =
+      [ "unfolding-square    : (A : U) → (Δ² → A) → Δ¹×Δ¹ → A"
+      , "witness-comp-is-segal : the composition witness triangle"
+      , "is-segal-A x y z f g  : the centre of contraction for f, g"
+      ]
+  , levelConclusion =
+      "The composition witness is now a square. Its left and right edges are $f$ and $g$; its other two edges are the composite. Seen sideways, this square is an arrow whose endpoints are $f$ and $g$ — which is what the next level makes precise."
+  }
+
+-- | The composition square, read as an arrow in the arrow type. Currying the
+-- square @Δ¹×Δ¹ → A@ in its first coordinate gives a map @Δ¹ → (Δ¹ → A)@, i.e.
+-- an arrow in @arr A@ whose endpoints are @f@ and @g@. This is the key change of
+-- viewpoint that makes composition in @A@ into composition in @arr A@. Solution:
+-- curry the square, @\ t s → witness-square … (t , s)@.
+arrInArrLevel :: Level
+arrInArrLevel = Level
+  { levelTitle     = "An arrow between arrows"
+  , levelIntro     =
+      "Here is the pivot of the whole proof. An arrow in the arrow type $\\mathsf{arr}\\,A$ is a morphism whose endpoints are themselves arrows. Curry the composition square: feed it the two coordinates one at a time, and it becomes a path from $f$ to $g$ in $\\mathsf{arr}\\,A$. Introduce the two coordinates and apply the square."
+  , levelStatement = "hom (arr A) f g"
+  , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel]
+  , levelTemplate  = T.unlines
+      [ "#def arr-in-arr-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom (arr A) f g"
+      , "  := \\ t s → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def arr-in-arr-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+      , "  (f : hom A x y) (g : hom A y z)"
+      , "  : hom (arr A) f g"
+      , "  := \\ t s → witness-square-comp-is-segal A is-segal-A x y z f g (t , s)"
+      ]
+  , levelGoalName  = "arr-in-arr-is-segal"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A x y) → (g : hom A y z) → hom (arr A) f g"
+  , levelInventory =
+      [ "witness-square-comp-is-segal : the composition square Δ¹×Δ¹ → A"
+      , "f , g    : the endpoints, now points of arr A"
+      , "λ-intro  : introduce the two square coordinates t and s"
+      ]
+  , levelConclusion =
+      "Composition in $A$ is now an arrow in $\\mathsf{arr}\\,A$. Because the arrow type of a Segal type is again Segal, these arrows can themselves be composed — and that second-order composition is what makes associativity fall out."
+  }
+
+-- | Composition associativity, witnessed in the arrow type. With @arr A@ shown
+-- Segal (taken as given here via @is-segal-arr@), the two composition arrows
+-- @arr-in-arr@ for @(f,g)@ and @(g,h)@ compose. Their composition witness is a
+-- @hom2@ in @arr A@ — a triangle of arrows whose hypotenuse is their composite.
+-- This is the mechanical heart: assemble @witness-comp-is-segal@ at @arr A@. The
+-- long goal type names every edge, so the term is one spine over the inventory.
+-- Marked ★: it carries the idea but is the most clerical of the section.
+witnessAssocLevel :: Level
+witnessAssocLevel = Level
+  { levelTitle     = "Composing the witnesses"
+  , levelIntro     =
+      "The two composition arrows — one for $(f,g)$, one for $(g,h)$ — are composable arrows in $\\mathsf{arr}\\,A$. Since the arrow type is itself Segal (we take this as given; see the section note), they have a composition witness: a triangle `hom2 (arr A)` whose hypotenuse is their composite. Build it the same way as before, but one level up: apply `witness-comp-is-segal` in the arrow type to the two `arr-in-arr-is-segal` arrows."
+  , levelStatement = "hom2 (arr A) f g h …"
+  , levelPrelude   =
+      assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel]
+  , levelTemplate  = T.unlines
+      [ "#def witness-associative-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : hom2 (arr A) f g h"
+      , "      (arr-in-arr-is-segal A is-segal-A w x y f g)"
+      , "      (arr-in-arr-is-segal A is-segal-A x y z g h)"
+      , "      (comp-is-segal (arr A) (is-segal-arr A is-segal-A) f g h"
+      , "        (arr-in-arr-is-segal A is-segal-A w x y f g)"
+      , "        (arr-in-arr-is-segal A is-segal-A x y z g h))"
+      , "  := ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def witness-associative-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : hom2 (arr A) f g h"
+      , "      (arr-in-arr-is-segal A is-segal-A w x y f g)"
+      , "      (arr-in-arr-is-segal A is-segal-A x y z g h)"
+      , "      (comp-is-segal (arr A) (is-segal-arr A is-segal-A) f g h"
+      , "        (arr-in-arr-is-segal A is-segal-A w x y f g)"
+      , "        (arr-in-arr-is-segal A is-segal-A x y z g h))"
+      , "  := witness-comp-is-segal (arr A) (is-segal-arr A is-segal-A) f g h"
+      , "       (arr-in-arr-is-segal A is-segal-A w x y f g)"
+      , "       (arr-in-arr-is-segal A is-segal-A x y z g h)"
+      ]
+  , levelGoalName  = "witness-associative-is-segal"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (w : A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A w x) → (g : hom A x y) → (h : hom A y z) \
+      \→ hom2 (arr A) f g h \
+      \(arr-in-arr-is-segal A is-segal-A w x y f g) \
+      \(arr-in-arr-is-segal A is-segal-A x y z g h) \
+      \(comp-is-segal (arr A) (is-segal-arr A is-segal-A) f g h \
+      \(arr-in-arr-is-segal A is-segal-A w x y f g) \
+      \(arr-in-arr-is-segal A is-segal-A x y z g h))"
+  , levelInventory =
+      [ "witness-comp-is-segal : the witness, here applied in arr A"
+      , "is-segal-arr A is-segal-A : arr A is Segal (taken as given)"
+      , "arr-in-arr-is-segal … w x y f g : the (f,g) composition arrow"
+      , "arr-in-arr-is-segal … x y z g h : the (g,h) composition arrow"
+      ]
+  , levelConclusion =
+      "A triangle of arrows: its two legs are the $(f,g)$ and $(g,h)$ composition arrows, and its hypotenuse is their composite in $\\mathsf{arr}\\,A$. Uncurried, this triangle of arrows is a prism $\\Delta^2\\times\\Delta^1 \\to A$ — and the tetrahedron is hiding inside it."
+  }
+
+-- | The tetrahedron, extracted from the prism. The witness triangle in @arr A@
+-- curries to a prism @Δ²×Δ¹ → A@. The @3@-simplex @Δ³@ sits inside that prism via
+-- the middle-simplex map @((t , s) , r) ↦ ((t , r) , s)@: swap the inner and
+-- outer second coordinates. Solution: apply the witness with the coordinates
+-- regrouped, @witness-associative … (t , r) s@.
+tetrahedronLevel :: Level
+tetrahedronLevel = Level
+  { levelTitle     = "The associativity tetrahedron"
+  , levelIntro     =
+      "The triangle of arrows, uncurried, is a prism $\\Delta^2\\times\\Delta^1 \\to A$. The $3$-simplex $\\Delta^3$ embeds in that prism by the *middle-simplex* map $((t,s),r) \\mapsto ((t,r),s)$ — swap the inner coordinate $s$ with the outer one $r$. Introduce the three coordinates of $\\Delta^3$, then apply the witness with them regrouped this way."
+  , levelStatement = "Δ³ → A"
+  , levelPrelude   = assocPreludeFor
+      [unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel, witnessAssocLevel]
+  , levelTemplate  = T.unlines
+      [ "#def tetrahedron-associative-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : Δ³ → A"
+      , "  := \\ ((t , s) , r) → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def tetrahedron-associative-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : Δ³ → A"
+      , "  := \\ ((t , s) , r) → witness-associative-is-segal A is-segal-A w x y z f g h (t , r) s"
+      ]
+  , levelGoalName  = "tetrahedron-associative-is-segal"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (w : A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A w x) → (g : hom A x y) → (h : hom A y z) → Δ³ → A"
+  , levelInventory =
+      [ "witness-associative-is-segal : the prism Δ²×Δ¹ → A, as a curried witness"
+      , "((t , s) , r) : the Δ³ coordinates"
+      , "(t , r) s     : the middle-simplex regrouping"
+      ]
+  , levelConclusion =
+      "The middle-simplex map carries $\\Delta^3$ into the prism, extracting a genuine tetrahedron. Its four faces are the three pairwise composites and the triple composite; reading off its edges gives the two bracketings of $h\\circ g\\circ f$."
+  }
+
+-- | The triple composite, read off the tetrahedron's main diagonal. The
+-- tetrahedron @Δ³ → A@ has a long diagonal from the first to the last vertex,
+-- traced by the fully degenerate point @((t , t) , t)@. That diagonal is the
+-- composite of all three arrows. Solution: restrict the tetrahedron to the main
+-- diagonal, @tetrahedron … ((t , t) , t)@.
+tripleCompLevel :: Level
+tripleCompLevel = Level
+  { levelTitle     = "The triple composite"
+  , levelIntro     =
+      "One arrow is left to read off. The tetrahedron's main diagonal runs from its first vertex $w$ to its last vertex $z$, traced by the fully degenerate point $((t,t),t)$. That diagonal *is* the composite $h\\circ g\\circ f$ of all three arrows. Introduce the interval coordinate and restrict the tetrahedron to its main diagonal."
+  , levelStatement = "hom A w z"
+  , levelPrelude   = assocPreludeFor
+      [ unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel
+      , witnessAssocLevel, tetrahedronLevel ]
+  , levelTemplate  = T.unlines
+      [ "#def triple-comp-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : hom A w z"
+      , "  := \\ t → tetrahedron-associative-is-segal A is-segal-A w x y z f g h (?)"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def triple-comp-is-segal"
+      , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
+      , "  (f : hom A w x) (g : hom A x y) (h : hom A y z)"
+      , "  : hom A w z"
+      , "  := \\ t → tetrahedron-associative-is-segal A is-segal-A w x y z f g h ((t , t) , t)"
+      ]
+  , levelGoalName  = "triple-comp-is-segal"
+  , levelGoalType  =
+      "(A : U) → (is-segal-A : is-segal A) → (w : A) → (x : A) → (y : A) → (z : A) \
+      \→ (f : hom A w x) → (g : hom A x y) → (h : hom A y z) → hom A w z"
+  , levelInventory =
+      [ "tetrahedron-associative-is-segal : the tetrahedron Δ³ → A"
+      , "((t , t) , t) : the fully degenerate point, the main diagonal"
+      ]
+  , levelConclusion =
+      "The triple composite is the tetrahedron's main diagonal. Its two faces exhibit it both as $(h\\circ g)\\circ f$ and as $h\\circ(g\\circ f)$; since a Segal type's composites are unique, the two bracketings agree. That is associativity — see the sHoTT chapter for the final equality."
   }
