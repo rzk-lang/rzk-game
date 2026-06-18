@@ -1,0 +1,23 @@
+-- Native project for the host-side, non-wasm components: the library (used
+-- headlessly), the `rzk-game-bundle` bundler, and the `rzk-game-spec` tests.
+--
+-- The main cabal.project pins miso for the wasm app, but miso needs a newer
+-- template-haskell than a stock native GHC ships, so it cannot be in a native
+-- solve. This project drops miso (and the wasm-only executable, marked
+-- buildable:False off wasm) and keeps only rzk. Build with:
+--
+--   cabal --project-file=cabal.project.native build rzk-game-spec
+--   cabal --project-file=cabal.project.native run  rzk-game-bundle
+packages: .
+
+source-repository-package
+  type: git
+  location: https://github.com/rzk-lang/rzk.git
+  tag: 058198a864b88124c82447b23d4bf857ff71aa82
+  subdir: rzk
+
+package rzk
+  flags: -lsp
+
+allow-newer:
+  all:base
