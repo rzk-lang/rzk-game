@@ -33,8 +33,7 @@ module RzkGame.Section
   , lookupPuzzleSlot
     -- * Prerequisites and locking
   , prereqSatisfied
-  , prereqBlocking
-  , lockingPrereqs
+  , unmetPrereqs
   , levelLocked
     -- * Progress
   , slotRequired
@@ -151,8 +150,9 @@ lookupPuzzleSlot :: [Slot] -> Text -> Maybe (Int, PuzzleItem)
 lookupPuzzleSlot slots pid = find ((== pid) . puzzleId . snd) (puzzleSlots slots)
 
 -- | A prerequisite is satisfied when its puzzle is solved, or the player has
--- self-reported familiarity on it. An unknown id is treated as satisfied, so a
--- typo in a prereq list fails open rather than locking a level forever.
+-- self-reported familiarity on it (the pre-test "I already know this" escape).
+-- An unknown id is treated as satisfied, so a typo in a prereq list fails open
+-- rather than locking a level forever.
 prereqSatisfied :: [Slot] -> Set Int -> Map Text PretestAnswer -> Text -> Bool
 prereqSatisfied slots solvedIxs answers pid =
   case lookupPuzzleSlot slots pid of
@@ -160,25 +160,23 @@ prereqSatisfied slots solvedIxs answers pid =
     Just (ix, _) -> Set.member ix solvedIxs
                  || Map.lookup pid answers == Just Familiar
 
--- | A prerequisite /blocks/ only when the player explicitly marked it as not
--- familiar. Merely being unsolved does not lock anything — locking is opt-in,
--- triggered by an honest pre-test answer.
-prereqBlocking :: Map Text PretestAnswer -> Text -> Bool
-prereqBlocking answers pid = Map.lookup pid answers == Just NotFamiliar
-
--- | The prerequisites that are currently blocking a puzzle, resolved to their
+-- | The prerequisites of a puzzle that are not yet satisfied, resolved to their
 -- 'PuzzleItem's (so the UI can show their titles and remediation), in order.
-lockingPrereqs :: [Slot] -> Map Text PretestAnswer -> PuzzleItem -> [PuzzleItem]
-lockingPrereqs slots answers z =
-  [ pz | pid <- puzzlePrereqs z, prereqBlocking answers pid
+unmetPrereqs
+  :: [Slot] -> Set Int -> Map Text PretestAnswer -> PuzzleItem -> [PuzzleItem]
+unmetPrereqs slots solvedIxs answers z =
+  [ pz | pid <- puzzlePrereqs z, not (prereqSatisfied slots solvedIxs answers pid)
        , Just (_, pz) <- [lookupPuzzleSlot slots pid] ]
 
--- | Whether a puzzle is locked: it has a blocking prerequisite and has not been
--- explicitly overridden (the "Unlock anyway" escape).
-levelLocked :: [Slot] -> Set Text -> Map Text PretestAnswer -> PuzzleItem -> Bool
-levelLocked slots overrides answers z =
+-- | Whether a puzzle is locked: a prerequisite is not yet satisfied and the
+-- player has not overridden the lock ("Unlock anyway"). A prerequisite counts as
+-- satisfied once solved (or marked familiar on its pre-test), so finishing the
+-- prerequisites opens the level.
+levelLocked
+  :: [Slot] -> Set Int -> Set Text -> Map Text PretestAnswer -> PuzzleItem -> Bool
+levelLocked slots solvedIxs overrides answers z =
   not (puzzleId z `Set.member` overrides)
-    && not (null (lockingPrereqs slots answers z))
+    && not (null (unmetPrereqs slots solvedIxs answers z))
 
 -- | Whether a slot counts toward section completion. Starred extras do not.
 slotRequired :: Slot -> Bool
@@ -186,15 +184,17 @@ slotRequired (SlotProse  _ _)   = True
 slotRequired (SlotPuzzle _ _ z) = puzzleRole z /= Extra
 
 -- | Whether a slot's activity is done. Prose is done when viewed. A core puzzle
--- is done when solved; a pre-test is done when solved /or/ answered either way
--- (the assessment itself is the activity); an extra is done when solved.
+-- is done when solved; a pre-test is done when solved /or/ marked familiar (a
+-- "not familiar" answer sends the player to remediation, so it is not yet done);
+-- an extra is done when solved.
 slotDone :: Set Int -> Set Text -> Map Text PretestAnswer -> Slot -> Bool
 slotDone solvedIxs viewed answers = \case
   SlotProse  _ p    -> Set.member (proseId p) viewed
   SlotPuzzle _ ix z -> case puzzleRole z of
     Core    -> Set.member ix solvedIxs
     Extra   -> Set.member ix solvedIxs
-    PreTest -> Set.member ix solvedIxs || Map.member (puzzleId z) answers
+    PreTest -> Set.member ix solvedIxs
+                 || Map.lookup (puzzleId z) answers == Just Familiar
 
 -- | The slots belonging to a section, in order.
 sectionSlots :: [Slot] -> Text -> [Slot]

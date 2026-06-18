@@ -273,15 +273,16 @@ hsSelftest = do
       derivedOk  = map levelTitle [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections ]
                      == map levelTitle gameLevels
   putStrLn (if orderOk && derivedOk then "section order: OK" else "SECTION ORDER FAILED")
-  putStrLn "== locking: a 'not familiar' pre-test locks its dependents (expect OK) =="
+  putStrLn "== locking: an unmet prerequisite locks its dependents (expect OK) =="
   let apHomItem  = maybe (error "no ap-hom") snd (lookupPuzzleSlot slots "ap-hom")
+      mapPointIx = maybe (error "no map-point") fst (lookupPuzzleSlot slots "map-point")
       noAnswers  = Map.empty
-      blocked    = Map.fromList [("map-point", NotFamiliar)]
       familiar   = Map.fromList [("map-point", Familiar)]
-      lockOk     = not (levelLocked slots Set.empty noAnswers apHomItem)              -- unanswered: open
-                && levelLocked slots Set.empty blocked apHomItem                      -- not familiar: locked
-                && not (levelLocked slots Set.empty familiar apHomItem)               -- familiar: open
-                && not (levelLocked slots (Set.fromList ["ap-hom"]) blocked apHomItem) -- override: open
+      solvedPre  = Set.fromList [mapPointIx]
+      lockOk     = levelLocked slots Set.empty Set.empty noAnswers apHomItem            -- prereq unsolved: locked
+                && not (levelLocked slots solvedPre Set.empty noAnswers apHomItem)      -- prereq solved: open
+                && not (levelLocked slots Set.empty Set.empty familiar apHomItem)       -- marked familiar: open
+                && not (levelLocked slots Set.empty (Set.fromList ["ap-hom"]) noAnswers apHomItem) -- override: open
   putStrLn (if lockOk then "locking: OK" else "LOCKING FAILED")
   putStrLn "== progress: a section completes only when its required slots are done (expect OK) =="
   let allIdx     = Set.fromList [0 .. length gameLevels - 1]
@@ -603,10 +604,12 @@ slotButton m (i, s) =
         in ( ["tile-prose"] <> [ "current" | current ] <> [ "done" | v ]
            , icoProse, [], proseTitle p )
       SlotPuzzle _ ix z ->
-        let solvedThis = Set.member ix (m ^. solved)
-            locked = levelLocked slots (m ^. unlocked) (m ^. pretest) z
-            star   = puzzleRole z == Extra
-            pre    = puzzleRole z == PreTest
+        let star    = puzzleRole z == Extra
+            pre     = puzzleRole z == PreTest
+            solvedThis = Set.member ix (m ^. solved)
+            familiar   = pre && Map.lookup (puzzleId z) (m ^. pretest) == Just Familiar
+            doneThis   = solvedThis || familiar
+            locked = levelLocked slots (m ^. solved) (m ^. unlocked) (m ^. pretest) z
             roleCls | star      = "tile-star"
                     | pre       = "tile-pretest"
                     | otherwise = "tile-core"
@@ -618,39 +621,44 @@ slotButton m (i, s) =
                  | pre       = " (pre-test)"
                  | otherwise = ""
         in ( [roleCls] <> [ "current" | current ]
-                       <> [ "solved" | solvedThis ] <> [ "locked" | locked ]
+                       <> [ "solved" | doneThis ] <> [ "locked" | locked ]
            , ico
            , [ H.span_ [ P.class_ "tile-num" ] [ text (ms (tshow (ix + 1))) ] ]
            , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note )
 
 -- | The role icons, drawn as inline SVG so they inherit the tile's colour
--- (@currentColor@) and stay crisp at any size. Paths use a @0 0 24 24@ box.
-svgIcon :: [View Model Action] -> View Model Action
-svgIcon = S.svg_ [ SP.viewBox_ "0 0 24 24", SP.fill_ "currentColor" ]
+-- (@currentColor@) and stay crisp at any size. Every icon is a single @<path>@
+-- with the same structure, differing only in its @d@: swapping one role icon for
+-- another (e.g. a puzzle that becomes locked) is then a pure attribute change, so
+-- miso patches one attribute rather than restructuring the SVG subtree — which
+-- otherwise mispositioned the tile on the live swap. Paths use a @0 0 24 24@ box,
+-- each shape centred on @(12, 12)@.
+svgIcon :: MisoString -> View Model Action
+svgIcon d =
+  S.svg_ [ SP.viewBox_ "0 0 24 24", SP.fill_ "currentColor" ]
+    [ S.path_ [ SP.d_ d ] ]
 
+-- text lines (a document)
 icoProse :: View Model Action
-icoProse = svgIcon
-  [ S.path_ [ SP.d_ "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z" ] ]
+icoProse = svgIcon "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z"
 
+-- a node (a filled disc)
 icoCore :: View Model Action
-icoCore = svgIcon [ S.circle_ [ SP.cx_ "12", SP.cy_ "12", SP.r_ "5" ] ]
+icoCore = svgIcon "M12 7 A5 5 0 1 0 12 17 A5 5 0 1 0 12 7 Z"
 
+-- a diamond (a checkpoint)
 icoPretest :: View Model Action
-icoPretest = svgIcon [ S.polygon_ [ SP.points_ "12,3 21,12 12,21 3,12" ] ]
+icoPretest = svgIcon "M12 3 L21 12 L12 21 L3 12 Z"
 
+-- a five-point star
 icoStar :: View Model Action
 icoStar = svgIcon
-  [ S.polygon_
-      [ SP.points_
-          "12,2 14.7,8.6 21.8,9.2 16.4,13.9 18,20.8 12,17.1 6,20.8 7.6,13.9 2.2,9.2 9.3,8.6" ] ]
+  "M12 2 L14.7 8.6 L21.8 9.2 L16.4 13.9 L18 20.8 L12 17.1 L6 20.8 L7.6 13.9 L2.2 9.2 L9.3 8.6 Z"
 
+-- a padlock (a filled shackle band over a body), as one even-odd-free contour set
 icoLock :: View Model Action
 icoLock = svgIcon
-  [ S.path_ [ SP.d_ "M8.5 11 V8 a3.5 3.5 0 0 1 7 0 V11"
-            , SP.fill_ "none", SP.stroke_ "currentColor"
-            , SP.strokeWidth_ "2", SP.strokeLinecap_ "round" ]
-  , S.path_ [ SP.d_ "M6.5 11 H17.5 V19.5 H6.5 Z" ]
-  ]
+  "M7.5 11 V9 A4.5 4.5 0 0 1 16.5 9 V11 H14.5 V9 A2.5 2.5 0 0 0 9.5 9 V11 Z M6 11 H18 V19.5 H6 Z"
 
 -- | @(done, total)@ over every required slot of the game.
 overallProgress :: Model -> (Int, Int)
@@ -720,7 +728,7 @@ puzzleSlotView m sid ix z =
   <> [ advanceView m, navBar m ]
   where
     lvl       = puzzleLevel z
-    locked    = levelLocked slots (m ^. unlocked) (m ^. pretest) z
+    locked    = levelLocked slots (m ^. solved) (m ^. unlocked) (m ^. pretest) z
     titleMark = if Set.member ix (m ^. solved) then "✓ " else ""
     roleSuffix = case puzzleRole z of
       Extra   -> " ★"
@@ -773,22 +781,28 @@ pretestControls m z
                 , H.onClick (SetPretest (puzzleId z) a) ]
         [ text lbl ]
 
--- | The lock panel shown in place of the editor when a prerequisite the player
--- marked "not familiar" is blocking. It names the blockers, offers their
--- remediation, and an "Unlock anyway" escape so a player is never trapped.
+-- | The lock panel shown in place of the editor when a prerequisite is not yet
+-- met. It names the unmet prerequisites, offers a jump to each (and any
+-- remediation), and an "Unlock anyway" escape so a player is never trapped.
 lockPanel :: Model -> PuzzleItem -> View Model Action
 lockPanel m z =
   H.div_ [ P.class_ "locked" ]
-    [ H.p_ [] [ text (ms msg) ]
-    , remedyBox "Recommended before this level:" (concatMap puzzleRemedy blockers)
-    , H.button_ [ P.class_ "secondary", H.onClick (Unlock (puzzleId z)) ]
-        [ text "Unlock anyway" ]
-    ]
+    ( [ H.p_ [] [ text (ms msg) ]
+      , H.div_ [ P.class_ "lock-jumps" ] (map jumpTo blockers)
+      ]
+      <> [ remedyBox "Recommended before this level:" remedies | not (null remedies) ]
+      <> [ H.button_ [ P.class_ "secondary", H.onClick (Unlock (puzzleId z)) ]
+             [ text "Unlock anyway" ] ]
+    )
   where
-    blockers = lockingPrereqs slots (m ^. pretest) z
+    blockers = unmetPrereqs slots (m ^. solved) (m ^. pretest) z
+    remedies = concatMap puzzleRemedy blockers
     names    = T.intercalate ", " (map (levelTitle . puzzleLevel) blockers)
-    msg      = "🔒 Locked — this builds on " <> names
-                 <> ", which you marked as not familiar."
+    msg      = "🔒 Locked — finish " <> names <> " first."
+    jumpTo pz = case puzzleSlotIndex (puzzleId pz) of
+      Just i  -> H.button_ [ P.class_ "remedy-link", H.onClick (SelectSlot i) ]
+                   [ text (ms ("Go to: " <> levelTitle (puzzleLevel pz))) ]
+      Nothing -> text ""
 
 -- | A box of remediation links. External targets are anchors; in-game targets
 -- are buttons that navigate to the relevant slot.
