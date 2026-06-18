@@ -1,4 +1,8 @@
 ---
+hints:
+- text: 'The right edge is the identity at $y$, so the whole triangle is just $f$, reparametrised. You only need one coordinate.'
+- text: 'Look at the bottom edge of the goal: `↦ f t`. That tells you to apply $f$ to the first coordinate — type `\ (t , s) → f t`.'
+  when-goal: '↦ f t'
 id: rut
 inventory:
 - 'f        : hom A x y'

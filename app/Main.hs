@@ -134,6 +134,7 @@ data Model = Model
   , _confirmReset :: Bool                  -- ^ whether the reset confirmation is showing
   , _importMsg :: Maybe (Either T.Text Int) -- ^ last import result: error, or count restored
   , _formatOnCheck :: Bool                  -- ^ format the editable region before each check
+  , _hintsShown :: Int                      -- ^ how many hints the player has revealed (per-session)
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -171,6 +172,9 @@ importMsg = lens _importMsg $ \m v -> m { _importMsg = v }
 
 formatOnCheck :: Lens Model Bool
 formatOnCheck = lens _formatOnCheck $ \m v -> m { _formatOnCheck = v }
+
+hintsShown :: Lens Model Int
+hintsShown = lens _hintsShown $ \m v -> m { _hintsShown = v }
 
 -- | The slot currently being shown.
 currentSlot :: Model -> Slot
@@ -216,6 +220,7 @@ data Action
   | SetImportMsg (Maybe (Either T.Text Int))  -- ^ show the result of an applied import
   | DismissImportMsg           -- ^ dismiss the import result banner
   | SetFormatOnCheck Bool      -- ^ toggle (and persist) the format-on-check preference
+  | RevealHint                 -- ^ reveal the next hidden hint (progressive disclosure)
   -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
@@ -530,7 +535,7 @@ app = (component initModel updateModel viewModel)
 
 initModel :: Model
 initModel = enterSlotPure 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False Nothing False)
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False Nothing False 0)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -538,11 +543,13 @@ initModel = enterSlotPure 0
 enterSlotPure :: Int -> Model -> Model
 enterSlotPure i m = case slotAt i of
   SlotProse _ _ ->
-    m { _slotIx = i, _editable = "", _result = NotChecked, _history = [] }
+    m { _slotIx = i, _editable = "", _result = NotChecked, _history = []
+      , _hintsShown = 0 }
   SlotPuzzle _ _ z ->
     let t = levelTemplate (puzzleLevel z)
     in m { _slotIx = i, _editable = ms t
-         , _result = checkLevel (puzzleLevel z) t, _history = [] }
+         , _result = checkLevel (puzzleLevel z) t, _history = []
+         , _hintsShown = 0 }
 
 -- localStorage keys.
 progressKey, viewedKey, pretestKey, unlockedKey :: MisoString
@@ -741,9 +748,10 @@ updateModel = \case
       Nothing -> pure ()
   ToggleMap -> mapOpen %= not
   SelectSlot i -> do
-    history .= []
-    slotIx  .= i
-    mapOpen .= False         -- collapse the map after a jump, back to content
+    history    .= []
+    slotIx     .= i
+    hintsShown .= 0          -- a fresh level starts with its hints hidden again
+    mapOpen    .= False      -- collapse the map after a jump, back to content
     case slotAt i of
       SlotProse _ p -> do
         editable .= ""
@@ -864,6 +872,13 @@ updateModel = \case
   SetFormatOnCheck b -> do
     formatOnCheck .= b
     io_ (saveFormatOnCheck b)
+  RevealHint -> withPuzzle $ \ix -> do
+    -- The button walks the plain hints one at a time; contextual (when-goal)
+    -- hints surface on their own, so the count never needs to pass the plain
+    -- hints (plus one "ask" to engage a level whose hints are all contextual).
+    let cap = max (plainHintCount (levelHints (nthLevel ix))) 1
+    n <- use hintsShown
+    if n < cap then hintsShown .= n + 1 else pure ()
   where
     -- Apply the formatter only when format-on-check is on, leaving the text as
     -- typed otherwise. The formatter itself no-ops on a non-parsing fragment.
@@ -1169,6 +1184,7 @@ puzzleSlotView m sid ix z =
                  , text " Format on check" ]
              , H.h3_ [] [ text "Result" ]
              , resultView (m ^. result)
+             , hintsView m lvl
              , conclusionView m lvl
              ]
 
@@ -1349,6 +1365,50 @@ moveButton kind ins =
     (kindLabel, kindClass) = case kind of
       Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
       Give  -> ("give",            "kind-give")
+
+-- | The focused hole's rendered goal, if the proof currently has holes. This is
+-- what a hint's @when-goal@ trigger is matched against.
+focusedGoal :: CheckResult -> Maybe T.Text
+focusedGoal (Holes (h : _)) = Just (hvGoal h)
+focusedGoal _               = Nothing
+
+-- | The hint panel: the hints currently visible (plain hints up to the revealed
+-- count, plus any contextual when-goal hint whose trigger matches the focused
+-- goal), each rendered as prose. The reveal button walks the plain hints only —
+-- it never surfaces a contextual hint out of context — so it disappears once
+-- every plain hint is showing (and on a solved level, where hints are moot).
+-- Hidden entirely on a level with no hints.
+hintsView :: Model -> Level -> View Model Action
+hintsView m lvl
+  | null hs   = text ""
+  | otherwise =
+      H.div_ [ P.class_ "hints" ]
+        ( [ H.h3_ [] [ text "Hints" ] ]
+          <> [ hintCard i h | (i, h) <- vis ]
+          <> [ revealButton | showButton ] )
+  where
+    hs         = levelHints lvl
+    mgoal      = focusedGoal (m ^. result)
+    n          = m ^. hintsShown
+    vis        = visibleHints hs mgoal n
+    plainN     = plainHintCount hs
+    hasCtx     = any ((/= Nothing) . hintWhenGoal) hs
+    notSolved  = case m ^. result of Solved -> False; _ -> True
+    -- A plain hint left to reveal, or a first "ask" to engage an all-contextual
+    -- level's goal-matched hints.
+    showButton = notSolved
+                   && (n < plainN || (plainN == 0 && n == 0 && hasCtx))
+    revealButton =
+      H.button_ [ P.class_ "hint-btn", H.onClick RevealHint ]
+        [ text (if null vis then "💡 Stuck? Show a hint" else "💡 Show another hint") ]
+    -- Each hint is injected as prose (Markdown/TeX via prose.js), keyed by slot
+    -- and its position in the authored list so the hook re-fires on navigation
+    -- and as a contextual hint appears or disappears.
+    hintCard i h =
+      H.div_ [ P.class_ "hint prose"
+             , key_ (ms ("hint-" <> show (_slotIx m) <> "-" <> show i))
+             , onCreatedWith (InitProse (ms (hintText h)))
+             ] []
 
 -- | When the level is solved, offer a step onward: the next /incomplete/ slot
 -- (an unviewed prose or an unsolved required puzzle), searching forward and

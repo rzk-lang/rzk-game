@@ -1,0 +1,16 @@
+packages:
+  .
+  sample-app/
+  tests/
+  /Users/nikolaikudasov/git/rzk-lang/rzk/rzk
+
+package rzk
+  flags: -lsp
+
+allow-newer:
+  all:base
+
+if arch(wasm32)
+  shared: True
+
+flags: +template-haskell

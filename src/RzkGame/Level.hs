@@ -10,6 +10,7 @@
 -- The player wins when the editable region typechecks with no remaining holes.
 module RzkGame.Level
   ( Level (..)
+  , Hint (..)
   , CheckResult (..)
   , HoleView (..)
   , MoveKind (..)
@@ -18,6 +19,9 @@ module RzkGame.Level
   , refineFirstHole
   , renderResult
   , resultErrorLines
+  , hintMatchesGoal
+  , visibleHints
+  , plainHintCount
   ) where
 
 import           Data.Char            (isDigit, isSpace)
@@ -46,8 +50,59 @@ data Level = Level
   , levelGoalName   :: Text   -- ^ the definition the player must produce
   , levelGoalType   :: Text   -- ^ its required (closed) type, enforced on check
   , levelInventory  :: [Text] -- ^ names available to the player
+  , levelHints      :: [Hint] -- ^ authored hints, revealed on request
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
+
+-- | An authored hint, shown when the player is stuck. 'hintText' is Markdown
+-- prose (rendered like the intros). 'hintWhenGoal' is an optional trigger: when
+-- it is a (case-sensitive) infix of the focused hole's rendered goal, the hint
+-- is auto-surfaced (see 'hintMatchesGoal'). A hint with no trigger is only ever
+-- reached by the ordered, one-at-a-time reveal.
+data Hint = Hint
+  { hintText     :: Text
+  , hintWhenGoal :: Maybe Text
+  } deriving (Eq, Show)
+
+-- | Whether a hint's @when-goal@ trigger fires for a rendered goal text. The
+-- match is deliberately simple — a case-sensitive infix test on the already
+-- rendered goal, not structural unification — so an author can reason about it
+-- by reading the goal panel. A hint with no trigger never auto-surfaces.
+hintMatchesGoal :: Hint -> Text -> Bool
+hintMatchesGoal h goal = case hintWhenGoal h of
+  Nothing  -> False
+  Just sub -> not (T.null sub) && sub `T.isInfixOf` goal
+
+-- | The number of /plain/ hints in a list — those with no @when-goal@. These are
+-- the ones the player reveals one at a time; see 'visibleHints'.
+plainHintCount :: [Hint] -> Int
+plainHintCount = length . filter ((== Nothing) . hintWhenGoal)
+
+-- | Which hints to show, paired with their position in the authored list (so the
+-- UI can key them stably). Two kinds of hint behave differently:
+--
+--   * a /plain/ hint (no @when-goal@) is revealed one at a time by the player —
+--     the first @shown@ plain hints, by author order, are visible;
+--   * a /contextual/ hint (with a @when-goal@) is shown only once the player has
+--     revealed at least one hint (so a pristine level the player has not engaged
+--     with is never spoiled) /and/ its trigger matches the focused @goal@.
+--
+-- A contextual hint is therefore never reached by the manual reveal and never
+-- shown out of context: it appears exactly while it is relevant and disappears
+-- when the goal moves on. The result keeps the authored order.
+visibleHints :: [Hint] -> Maybe Text -> Int -> [(Int, Hint)]
+visibleHints hints mgoal shown = go 0 0 hints
+  where
+    engaged = shown > 0
+    go _ _ [] = []
+    go i r (h : rest) = case hintWhenGoal h of
+      Nothing
+        | r < shown -> (i, h) : go (i + 1) (r + 1) rest
+        | otherwise ->          go (i + 1) (r + 1) rest
+      Just _
+        | engaged && maybe False (hintMatchesGoal h) mgoal
+                    -> (i, h) : go (i + 1) r rest
+        | otherwise ->          go (i + 1) r rest
 
 -- | The outcome of checking an editable region against a level.
 --

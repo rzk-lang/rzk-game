@@ -82,6 +82,7 @@ puzzleFrom files ref = do
         , levelGoalName   = goalName
         , levelGoalType   = goalType
         , levelInventory  = metaInventory m
+        , levelHints      = metaHints m
         , levelConclusion = conclusion
         }
   pure PuzzleItem
