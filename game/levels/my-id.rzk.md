@@ -1,4 +1,8 @@
 ---
+hints:
+- text: 'Look at the goal: both endpoints of the path are the same point $x$ (`↦ x` at each end), so you never need to move along the interval.'
+  when-goal: '↦ x'
+- text: 'Introduce the interval coordinate and ignore it — return $x$ whatever the coordinate: `\ t → x`.'
 id: my-id
 inventory:
 - 'x        : A'

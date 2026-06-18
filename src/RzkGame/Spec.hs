@@ -37,12 +37,15 @@ module RzkGame.Spec
   ) where
 
 import           Control.Applicative ((<|>))
-import           Data.Aeson          (FromJSON (..), withObject, (.!=), (.:),
-                                      (.:?))
+import           Data.Aeson          (FromJSON (..), Value, withObject, (.!=),
+                                      (.:), (.:?))
+import           Data.Aeson.Types    (Parser)
 import           Data.Char           (isSpace)
 import           Data.Map.Strict     (Map)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
+
+import           RzkGame.Level       (Hint (..))
 
 -- | The single JSON bundle the wasm app fetches: the @game.yaml@ as JSON under
 -- @config@, and every referenced level file inlined under @files@, keyed by the
@@ -162,10 +165,11 @@ data Meta = Meta
   , metaRole      :: Maybe Text
   , metaStatement :: Text
   , metaInventory :: [Text]
+  , metaHints     :: [Hint]
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" []
+emptyMeta = Meta "" "" Nothing "" [] []
 
 instance FromJSON Meta where
   parseJSON = withObject "Meta" $ \o -> Meta
@@ -174,6 +178,15 @@ instance FromJSON Meta where
     <*> o .:? "role"
     <*> o .:? "statement" .!= ""
     <*> o .:? "inventory" .!= []
+    <*> (o .:? "hints" .!= [] >>= traverse parseHint)
+
+-- | Read one front-matter hint: @{ text, when-goal? }@. The 'Hint' type lives in
+-- 'RzkGame.Level', so we decode it here without an orphan 'FromJSON' instance.
+-- @when-goal@ is the trigger string (optional); @text@ is the Markdown prose.
+parseHint :: Value -> Parser Hint
+parseHint = withObject "Hint" $ \o -> Hint
+  <$> o .:? "text" .!= ""
+  <*> o .:? "when-goal"
 
 -- | Split a level body into its @(prelude, template, solution)@ rzk code, by the
 -- role word on each fenced block (decision D2). A block opens with a fence whose

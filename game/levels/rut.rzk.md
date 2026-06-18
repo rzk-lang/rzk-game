@@ -1,4 +1,8 @@
 ---
+hints:
+- text: 'The hypotenuse and the bottom edge of the goal both read $f$ (`↦ f t`), and the right edge is the identity at $y$. So the whole triangle is $f$, reparametrised — you only need one coordinate.'
+  when-goal: '↦ f t'
+- text: 'Reuse $f$ along the first coordinate, ignoring the second: `\ (t , s) → f t`.'
 id: rut
 inventory:
 - 'f        : hom A x y'

@@ -334,6 +334,10 @@ idMorphismLevel = Level
       , "id-hom   : (A : U) → (x : A) → hom A x x"
       , "λ-intro  : introduce the interval coordinate"
       ]
+  , levelHints      =
+      [ Hint "Look at the goal: both endpoints of the path are the same point $x$ (`↦ x` at each end), so you never need to move along the interval." (Just "↦ x")
+      , Hint "Introduce the interval coordinate and ignore it — return $x$ whatever the coordinate: `\\ t → x`." Nothing
+      ]
   , levelConclusion =
       "The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all."
   }
@@ -367,6 +371,7 @@ constTriangleLevel = Level
       , "id-hom   : (A : U) → (x : A) → hom A x x"
       , "λ-intro  : introduce the two cube coordinates"
       ]
+  , levelHints      = []
   , levelConclusion =
       "Every boundary asked for $x$, so the constant function fills the whole triangle. In the next levels one edge becomes a genuine morphism, and the point has to vary along a coordinate."
   }
@@ -399,6 +404,10 @@ hom2Level = Level
       [ "f        : hom A x y"
       , "id-hom   : (A : U) → (x : A) → hom A x x"
       , "λ-intro  : introduce the cube coordinates"
+      ]
+  , levelHints      =
+      [ Hint "The hypotenuse and the bottom edge of the goal both read $f$ (`↦ f t`), and the right edge is the identity at $y$. So the whole triangle is $f$, reparametrised — you only need one coordinate." (Just "↦ f t")
+      , Hint "Reuse $f$ along the first coordinate, ignoring the second: `\\ (t , s) → f t`." Nothing
       ]
   , levelConclusion =
       "The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs."
@@ -434,6 +443,7 @@ homLeftUnitLevel = Level
       , "id-hom   : (A : U) → (x : A) → hom A x x"
       , "λ-intro  : introduce the cube coordinates"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The same edge $f$, reparametrised in the other coordinate. The right-unit triangle used the first coordinate; the left-unit one uses the second."
   }
@@ -467,6 +477,7 @@ mapPointLevel = Level
       , "x        : A"
       , "λ-intro  : introduce the interval coordinate"
       ]
+  , levelHints      = []
   , levelConclusion =
       "A function sends a point to a point, and the constant path at `g x` is its identity. The next level carries a whole morphism along, not just a point."
   }
@@ -502,6 +513,7 @@ apHomLevel = Level
       , "f        : hom A x y"
       , "λ-intro  : introduce the interval coordinate"
       ]
+  , levelHints      = []
   , levelConclusion =
       "Applying $g$ along the path $f$ gives a morphism between the images. This is functoriality: a function carries morphisms to morphisms, here `g (f t)` tracing $g$'s image of $f$."
   }
@@ -544,6 +556,7 @@ composeLevel = Level
       , "first      : the centre of a contractible type / first of a pair"
       , "second     : the second component of a pair"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The composite $g \\circ f$ is the arrow at the centre of the contractible space of fillers. The Segal condition is exactly what makes this arrow exist and be well-defined. Next: recover the triangle that witnesses it."
   }
@@ -585,6 +598,7 @@ composeWitnessLevel = Level
       , "first      : the composite arrow (the pair's first component)"
       , "second     : the witness triangle (the pair's second component)"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The composite and its witnessing triangle are the two halves of one \
       \centre of contraction. Together they say: in a Segal type, composition \
@@ -628,6 +642,7 @@ unfoldingSquareLevel = Level
       , "recOR    : split on a pair of covering topes (here t ≤ s / s ≤ t)"
       , "(s , t)  : the swapped coordinate, reflecting across the diagonal"
       ]
+  , levelHints      = []
   , levelConclusion =
       "A square is two copies of one triangle glued along the diagonal — the original on $s \\le t$ and its reflection on $t \\le s$. The two branches agree on the diagonal $s \\equiv t$, where both read $\\mathsf{triangle}\\,(t,t)$, so `recOR` is well-defined. We can now unfold any triangle into a square."
   }
@@ -675,6 +690,7 @@ witnessSquareLevel = Level
       , "witness-comp-is-segal : the composition witness triangle"
       , "is-segal-A x y z f g  : the centre of contraction for f, g"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The composition witness is now a square. Its left and right edges are $f$ and $g$; its other two edges are the composite. Seen sideways, this square is an arrow whose endpoints are $f$ and $g$. The arrow type makes that precise — and the next two levels put it to work."
   }
@@ -712,6 +728,7 @@ idArrLevel = Level
       , "f s      : A       the arrow f at its own coordinate s"
       , "λ-intro  : two coordinates — t between arrows, s along the arrow"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The identity between arrows ignores the path coordinate $t$ and hands back the arrow $f$ unchanged. The two coordinates have clear roles: $t$ moves between arrows, $s$ runs along the arrow at hand. In the next level $t$ genuinely moves."
   }
@@ -759,6 +776,7 @@ arrInArrLevel = Level
       , "f , g    : the endpoints, now points of arr A"
       , "λ-intro  : t slides from f to g; s runs along the arrow at (t , s)"
       ]
+  , levelHints      = []
   , levelConclusion =
       "Composition in $A$ is now an arrow in $\\mathsf{arr}\\,A$. Because the arrow type of a Segal type is again Segal, these arrows can themselves be composed — and that second-order composition is what makes associativity fall out."
   }
@@ -830,6 +848,7 @@ witnessAssocLevel = Level
       , "arr-in-arr-is-segal … w x y f g : the (f,g) composition arrow"
       , "arr-in-arr-is-segal … x y z g h : the (g,h) composition arrow"
       ]
+  , levelHints      = []
   , levelConclusion =
       "A triangle of arrows: its two legs are the $(f,g)$ and $(g,h)$ composition arrows, and its hypotenuse is their composite in $\\mathsf{arr}\\,A$. Uncurried, this triangle of arrows is a prism $\\Delta^2\\times\\Delta^1 \\to A$ — and the tetrahedron is hiding inside it."
   }
@@ -876,6 +895,7 @@ tetrahedronLevel = Level
       , "((t , s) , r) : the Δ³ coordinates"
       , "(t , r) s     : the middle-simplex regrouping"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The middle-simplex map carries $\\Delta^3$ into the prism, extracting a genuine tetrahedron. Its four faces are the three pairwise composites and the triple composite; reading off its edges gives the two bracketings of $h\\circ g\\circ f$."
   }
@@ -921,6 +941,7 @@ tripleCompLevel = Level
       [ "tetrahedron-associative-is-segal : the tetrahedron Δ³ → A"
       , "((t , t) , t) : the fully degenerate point, the main diagonal"
       ]
+  , levelHints      = []
   , levelConclusion =
       "The triple composite is the tetrahedron's main diagonal. Its two faces exhibit it both as $(h\\circ g)\\circ f$ and as $h\\circ(g\\circ f)$; since a Segal type's composites are unique, the two bracketings agree. That is associativity — see the sHoTT chapter for the final equality."
   }

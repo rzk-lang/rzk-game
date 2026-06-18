@@ -10,6 +10,7 @@
 -- The player wins when the editable region typechecks with no remaining holes.
 module RzkGame.Level
   ( Level (..)
+  , Hint (..)
   , CheckResult (..)
   , HoleView (..)
   , MoveKind (..)
@@ -18,6 +19,7 @@ module RzkGame.Level
   , refineFirstHole
   , renderResult
   , resultErrorLines
+  , hintMatchesGoal
   ) where
 
 import           Data.Char            (isDigit, isSpace)
@@ -46,8 +48,28 @@ data Level = Level
   , levelGoalName   :: Text   -- ^ the definition the player must produce
   , levelGoalType   :: Text   -- ^ its required (closed) type, enforced on check
   , levelInventory  :: [Text] -- ^ names available to the player
+  , levelHints      :: [Hint] -- ^ authored hints, revealed on request
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
+
+-- | An authored hint, shown when the player is stuck. 'hintText' is Markdown
+-- prose (rendered like the intros). 'hintWhenGoal' is an optional trigger: when
+-- it is a (case-sensitive) infix of the focused hole's rendered goal, the hint
+-- is auto-surfaced (see 'hintMatchesGoal'). A hint with no trigger is only ever
+-- reached by the ordered, one-at-a-time reveal.
+data Hint = Hint
+  { hintText     :: Text
+  , hintWhenGoal :: Maybe Text
+  } deriving (Eq, Show)
+
+-- | Whether a hint's @when-goal@ trigger fires for a rendered goal text. The
+-- match is deliberately simple — a case-sensitive infix test on the already
+-- rendered goal, not structural unification — so an author can reason about it
+-- by reading the goal panel. A hint with no trigger never auto-surfaces.
+hintMatchesGoal :: Hint -> Text -> Bool
+hintMatchesGoal h goal = case hintWhenGoal h of
+  Nothing  -> False
+  Just sub -> not (T.null sub) && sub `T.isInfixOf` goal
 
 -- | The outcome of checking an editable region against a level.
 --
