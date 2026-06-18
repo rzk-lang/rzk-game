@@ -1,0 +1,153 @@
+name: Release
+
+# Publish the reusable rzk-game artifacts on a version tag, so the
+# rzk-game-action (rzk-lang/rzk-game-action) and downstream game repos (e.g.
+# rzk-lang/yoneda-game) can consume a pinned engine version with no Haskell
+# toolchain of their own:
+#
+#   * engine  — app.wasm + JS glue + static assets, packaged as a tarball
+#               *without* game.json (game.json is per-game and produced
+#               downstream by the bundler). Platform-independent.
+#   * bundler — the native rzk-game-bundle executable (linux-x64), which the
+#               action runs over a consumer repo's game/ to emit its game.json.
+#
+# The action fetches both at runtime, pinned per game repo via its
+# `engine-version` input (decision: the engine is fetched, not baked into the
+# action, so a game repo controls which engine it ships). The bundler ships as a
+# prebuilt linux-x64 binary consumed on GitHub-hosted ubuntu runners; a container
+# image is deferred, since compiling rzk inside the action would be prohibitive.
+#
+# The build steps mirror .github/workflows/ci.yml (same nix shells, same cache
+# keys) so a release warm-starts from CI's caches.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release and upload assets
+
+jobs:
+  # The engine: the same wasm build as CI's build-and-deploy job, packaged as a
+  # tarball. game.json is deliberately excluded — it is per-game and supplied by
+  # the bundler downstream.
+  engine:
+    name: Build engine (wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ❄️ Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+
+      - name: ❄️ Cache the nix store (wasm toolchain)
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix2-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix2-${{ runner.os }}-
+
+      - name: 💾 Cache the wasm cabal store, index, and SRP clones
+        uses: actions/cache@v4
+        with:
+          path: |
+            .wasm-store
+            .cabal-wasm
+            dist-newstyle/src
+          key: wasm-store-${{ runner.os }}-${{ hashFiles('cabal.project', 'rzk-game.cabal', 'flake.lock') }}
+          restore-keys: |
+            wasm-store-${{ runner.os }}-
+
+      - name: 🔨 Build and optimise (in the nix dev shell)
+        run: |
+          nix develop --command bash -c '
+            export CABAL_DIR="$PWD/.cabal-wasm" &&
+            wasm32-wasi-cabal update &&
+            make build WASM_STORE="$PWD/.wasm-store" &&
+            make optim
+          '
+
+      - name: 📦 Package the engine (no game.json)
+        run: tar czf rzk-game-engine.tar.gz -C public .
+
+      - name: 📤 Upload the engine artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rzk-game-engine
+          path: rzk-game-engine.tar.gz
+          if-no-files-found: error
+
+  # The bundler: the native rzk-game-bundle executable, the only native piece the
+  # action needs. Built in the same native shell CI uses. This is a
+  # dynamically-linked glibc binary; it runs on GitHub-hosted ubuntu runners,
+  # which is the supported target for the action.
+  bundler:
+    name: Build bundler (native, linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ❄️ Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+
+      - name: ❄️ Cache the nix store (native toolchain)
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nixnative-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nixnative-${{ runner.os }}-
+
+      - name: 💾 Cache the native cabal store, index, and SRP clone
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cabal-native
+            dist-newstyle/src
+          key: cabal-native-${{ runner.os }}-${{ hashFiles('cabal.project.native', 'rzk-game.cabal', 'flake.lock') }}
+          restore-keys: |
+            cabal-native-${{ runner.os }}-
+
+      - name: 🔨 Build the bundler (in the native dev shell)
+        run: |
+          nix develop .#native --command bash -c '
+            export CABAL_DIR="$PWD/.cabal-native" &&
+            cabal --project-file=cabal.project.native update &&
+            cabal --project-file=cabal.project.native build exe:rzk-game-bundle &&
+            cp "$(cabal --project-file=cabal.project.native list-bin exe:rzk-game-bundle)" rzk-game-bundle-linux-x64
+          '
+
+      - name: 📤 Upload the bundler artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rzk-game-bundle
+          path: rzk-game-bundle-linux-x64
+          if-no-files-found: error
+
+  # Attach both artifacts to the GitHub Release for the tag. Skipped on a
+  # workflow_dispatch run with no tag (the artifacts are still built above, so a
+  # manual run smoke-tests the build without publishing).
+  release:
+    name: Publish release
+    needs: [engine, bundler]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: 📥 Download both artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 🚀 Attach artifacts to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/rzk-game-engine.tar.gz
+            dist/rzk-game-bundle-linux-x64
