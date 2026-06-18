@@ -203,15 +203,18 @@ proseAssociativitySummary = Prose "associativity-summary" "Wrap-up" (Just Summar
   , "and read the triple composite off the main diagonal of the resulting "
   , "tetrahedron. Its two faces present that composite as both $(h\\circ g)\\circ "
   , "f$ and $h\\circ(g\\circ f)$, so uniqueness of Segal composites makes the two "
-  , "bracketings equal. That is associativity — and with it, a Segal type really "
-  , "does behave like an $(\\infty,1)$-category."
+  , "bracketings equal. That is associativity. With composition that is unital "
+  , "and associative, a Segal type is a **pre-$(\\infty,1)$-category**; "
+  , "strengthening it with local univalence — a **Rezk type** — gives a genuine "
+  , "$(\\infty,1)$-category."
   ]
 
 proseCompositionSummary :: Prose
 proseCompositionSummary = Prose "composition-summary" "Wrap-up" (Just Summary) $ T.concat
   [ "In a Segal type, composition exists and comes with a witnessing triangle — "
-  , "the two halves of one centre of contraction. That is the structure that "
-  , "makes a type behave like an $(\\infty,1)$-category."
+  , "the two halves of one centre of contraction. That is what makes a Segal "
+  , "type a **pre-$(\\infty,1)$-category**. A **Rezk type** — a Segal type that "
+  , "is also locally univalent — is then a genuine $(\\infty,1)$-category."
   ]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
@@ -233,8 +236,9 @@ prelude = T.unlines
 -- machinery of the Segal condition: a type is Segal when every composable pair
 -- of arrows has a /unique/ filler triangle, i.e. the type of (composite,
 -- witness) pairs is contractible. Composition is then read off the centre of
--- that contractible type. Following Riehl and Shulman, this is the structure
--- that makes a type behave like an (∞,1)-category.
+-- that contractible type. Following Riehl and Shulman, this is the structure of
+-- a pre-(∞,1)-category (a Segal type); a Rezk type — Segal plus local
+-- univalence — is a genuine (∞,1)-category.
 segalPrelude :: Text
 segalPrelude = prelude <> T.unlines
   [ "#def is-contr (A : U) : U"
