@@ -146,6 +146,27 @@
     .ctx .name { color: #225; }
     .ctx .type { color: #555; }
     .muted { color: #888; font-style: italic; }
+    /* A thin, sticky bar that keeps level content in focus. It carries a toggle
+       for the full map, the current section, and overall progress. */
+    .mapbar-wrap { position: sticky; top: 0; z-index: 5; margin: 0 0 .6rem;
+                   background: #fff; }
+    .mapbar { display: flex; align-items: center; gap: .6rem;
+              padding: .35rem 0; border-bottom: 1px solid #eee; }
+    .map-toggle { background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px;
+                  cursor: pointer; font-size: .85rem; padding: .3rem .7rem;
+                  margin: 0; white-space: nowrap; }
+    .map-toggle:hover { border-color: #999; }
+    .mapbar-wrap.open .map-toggle { background: #cde; border-color: #79c; }
+    .mapbar-loc { flex: 1; font-weight: 600; color: #444; font-size: .9rem;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mapbar-progress { font-size: .8rem; color: #888; white-space: nowrap;
+                       font-variant-numeric: tabular-nums; }
+    .mapbar-progress.done { color: #2a7a2a; font-weight: 600; }
+    /* The full map drops below the bar only when open. */
+    .mapbar-wrap .sections { margin-top: .5rem;
+        animation: mapdrop .12s ease-out; }
+    @keyframes mapdrop { from { opacity: 0; transform: translateY(-.25rem); }
+                         to   { opacity: 1; transform: none; } }
     /* Grouped, sectioned level picker. Each section is a titled block with a
        progress count and a row of slot buttons. */
     .sections { display: flex; flex-direction: column; gap: .5rem;

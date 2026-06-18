@@ -73,6 +73,7 @@ data Model = Model
   , _pretest  :: Map T.Text PretestAnswer -- ^ pre-test self-assessments, by id
   , _unlocked :: Set T.Text               -- ^ "Unlock anyway" overrides, by id
   , _history  :: [MisoString]             -- ^ prior editable states, for Undo
+  , _mapOpen  :: Bool                      -- ^ whether the full level map is shown
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -98,6 +99,9 @@ unlocked = lens _unlocked $ \m v -> m { _unlocked = v }
 
 history :: Lens Model [MisoString]
 history = lens _history $ \m v -> m { _history = v }
+
+mapOpen :: Lens Model Bool
+mapOpen = lens _mapOpen $ \m v -> m { _mapOpen = v }
 
 -- | The slot currently being shown.
 currentSlot :: Model -> Slot
@@ -127,6 +131,7 @@ data Action
   | Check
   | Reset
   | SelectSlot Int             -- ^ navigate to a slot (prose or puzzle)
+  | ToggleMap                  -- ^ show/hide the full level map
   | Init                       -- ^ dispatched at mount: load saved state + draft
   | LoadState (Set Int) (Set T.Text) (Map T.Text PretestAnswer) (Set T.Text)
   | ApplyText Int MisoString   -- ^ install a puzzle's restored draft (by index)
@@ -295,7 +300,8 @@ app = (component initModel updateModel viewModel)
   { mount = Just Init }   -- seed solved/viewed/pretest/unlock and the draft
 
 initModel :: Model
-initModel = enterSlotPure 0 (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [])
+initModel = enterSlotPure 0
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -403,9 +409,11 @@ updateModel = \case
     case mix of
       Just ix -> io_ (saveDraft ix s)
       Nothing -> pure ()
+  ToggleMap -> mapOpen %= not
   SelectSlot i -> do
     history .= []
     slotIx  .= i
+    mapOpen .= False         -- collapse the map after a jump, back to content
     case slotAt i of
       SlotProse _ p -> do
         editable .= ""
@@ -516,23 +524,45 @@ viewModel _ m =
         , H.p_ [ P.class_ "tagline" ]
             [ text "An interactive Rzk proof game — fill the holes." ]
         ]
+    , navHeader m
     , H.section_ [ P.class_ "level" ]
-        ( sectionPicker m
-        : case currentSlot m of
+        ( case currentSlot m of
             SlotProse  sid p    -> proseSlotView  m sid p
             SlotPuzzle sid ix z -> puzzleSlotView m sid ix z
         )
     ]
 
--- | The grouped level selector: each section is a titled block with its progress
--- count and a row of slot buttons. Navigation stays free — every slot is always
--- reachable; locking only affects what a puzzle page shows.
-sectionPicker :: Model -> View Model Action
-sectionPicker m =
-  H.div_ []
-    [ H.div_ [ P.class_ "sections" ] (map sectionBlock gameSections)
-    , progressBadge m
+-- | A thin, sticky bar that keeps the level content in focus: it shows where the
+-- player is and the overall progress, with a toggle that reveals the full level
+-- map on demand. The map is hidden by default and collapses again after a jump.
+navHeader :: Model -> View Model Action
+navHeader m =
+  H.div_ [ P.class_ (ms ("mapbar-wrap" <> if open then " open" else "" :: T.Text)) ]
+    [ H.div_ [ P.class_ "mapbar" ]
+        [ H.button_ [ P.class_ "map-toggle", H.onClick ToggleMap ]
+            [ text (if open then "✕  Close map" else "☰  Levels") ]
+        , H.span_ [ P.class_ "mapbar-loc" ]
+            [ text (ms (sectionTitleOf (slotSectionId (currentSlot m)))) ]
+        , H.span_ [ P.class_ (ms (progCls :: T.Text)) ]
+            [ text (ms (tshow done <> " / " <> tshow total)) ]
+        ]
+    , if open then levelMap m else text ""
     ]
+  where
+    open          = m ^. mapOpen
+    (done, total) = overallProgress m
+    progCls       = "mapbar-progress" <> if done == total && total > 0 then " done" else ""
+
+-- | The section title for a section id (empty if unknown).
+sectionTitleOf :: T.Text -> T.Text
+sectionTitleOf sid = maybe "" sectionTitle (find ((== sid) . sectionId) gameSections)
+
+-- | The grouped level map: each section is a titled block with its progress count
+-- and a row of slot buttons. Shown only when the map is open. Navigation stays
+-- free — every slot is always reachable; locking only affects a puzzle page.
+levelMap :: Model -> View Model Action
+levelMap m =
+  H.div_ [ P.class_ "sections" ] (map sectionBlock gameSections)
   where
     indexed = zip [0 ..] slots
     sectionBlock sec =
@@ -574,19 +604,6 @@ slotButton m (i, s) =
            , [ "solved" | solvedThis ] <> [ "locked" | locked ] <> [ "star" | star ]
            , mark <> tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z)
                <> (if star then " ★" else "") )
-
--- | A progress line under the picker: an "N / M activities done" count over all
--- required slots, or a trophy when everything is done.
-progressBadge :: Model -> View Model Action
-progressBadge m
-  | done == total && total > 0 =
-      H.p_ [ P.class_ "progress done" ]
-        [ text (ms ("🏆 All " <> tshow total <> " activities done!")) ]
-  | otherwise =
-      H.p_ [ P.class_ "progress" ]
-        [ text (ms (tshow done <> " / " <> tshow total <> " activities done")) ]
-  where
-    (done, total) = overallProgress m
 
 -- | @(done, total)@ over every required slot of the game.
 overallProgress :: Model -> (Int, Int)
