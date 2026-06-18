@@ -1,4 +1,14 @@
-# The right-unit triangle
+---
+id: rut
+title: "The right-unit triangle"
+statement: "hom2 A x y y f (id-hom A y) f"
+inventory:
+  - "f        : hom A x y"
+  - "id-hom   : (A : U) → (x : A) → hom A x x"
+  - "λ-intro  : introduce the cube coordinates"
+---
+
+Now an edge becomes a genuine morphism. The hypotenuse of a `hom2` is the composite of its other two edges. Most triangles need $A$ to be Segal — but some are free. Given $f : x \to y$, the triangle whose right edge is the identity at $y$ has $f$ itself as its hypotenuse. This time the point must vary along the first coordinate. Build it.
 
 ```rzk prelude
 #lang rzk-1
@@ -23,3 +33,7 @@
   : hom2 A x y y f (id-hom A y) f
   := \ (t , s) → f t
 ```
+
+## Conclusion
+
+The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs.
