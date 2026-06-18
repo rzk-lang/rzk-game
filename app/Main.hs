@@ -203,7 +203,7 @@ data Action
   | SelectSlot Int             -- ^ navigate to a slot (prose or puzzle)
   | ToggleMap                  -- ^ show/hide the full level map
   | Init                       -- ^ dispatched at mount: load saved state + draft
-  | LoadState (Set Int) (Set T.Text) (Map T.Text PretestAnswer) (Set T.Text) Bool
+  | LoadState LoadedState       -- ^ install the persisted player state read at 'Init'
   | ApplyText Int MisoString   -- ^ install a puzzle's restored draft (by index)
   | SetPretest T.Text PretestAnswer  -- ^ record a pre-test self-assessment
   | Unlock T.Text              -- ^ override a lock ("Unlock anyway"), by puzzle id
@@ -611,6 +611,23 @@ readFormatOnCheck = (== Just "1") <$> getLocalStorage formatOnCheckKey
 saveFormatOnCheck :: Bool -> IO ()
 saveFormatOnCheck b = setLocalStorage formatOnCheckKey (if b then "1" else "0")
 
+-- | The persisted player state read at startup: the solved set, viewed prose,
+-- pre-test answers, unlock overrides, and the format-on-check preference. It is
+-- read by 'Init' and applied to the model by 'LoadState'. Bundling the reads
+-- into one record keeps that action's payload readable as the saved state grows.
+data LoadedState = LoadedState
+  { lsSolved        :: Set Int
+  , lsViewed        :: Set T.Text
+  , lsPretest       :: Map T.Text PretestAnswer
+  , lsUnlocked      :: Set T.Text
+  , lsFormatOnCheck :: Bool
+  }
+
+readLoadedState :: IO LoadedState
+readLoadedState = LoadedState
+  <$> readProgress <*> readViewed <*> readPretest <*> readUnlocked
+  <*> readFormatOnCheck
+
 -- | Per-level draft storage. Each puzzle's in-progress text is saved under its
 -- own key, so the raw source needs no escaping (unlike a single packed value).
 -- A draft for a level no longer in the list simply lingers, harmlessly unread.
@@ -737,21 +754,21 @@ updateModel = \case
     result   .= checkLevel (nthLevel ix) t
     io_ (removeDraft ix)     -- drop the draft so the template stays on next load
   Init -> do
-    io (LoadState <$> readProgress <*> readViewed <*> readPretest <*> readUnlocked
-                  <*> readFormatOnCheck)
+    io (LoadState <$> readLoadedState)
     io (SetImportMsg <$> readIORef importResultRef)  -- show an applied import's result
     mix <- currentPuzzleIx
     case mix of
       Just ix -> io (loadDraftAction ix)  -- a puzzle slot 0: restore its draft
       Nothing -> pure ()                  -- a prose slot 0: LoadState marks it viewed
-  LoadState s v pt u foc -> do
-    solved   .= s
-    pretest  .= pt
-    unlocked .= u
-    formatOnCheck .= foc
+  LoadState ls -> do
+    solved   .= lsSolved ls
+    pretest  .= lsPretest ls
+    unlocked .= lsUnlocked ls
+    formatOnCheck .= lsFormatOnCheck ls
     -- If slot 0 is prose, it has already been "visited" at mount, so fold it in.
     i <- use slotIx
-    let v' = case slotAt i of
+    let v  = lsViewed ls
+        v' = case slotAt i of
                SlotProse _ p -> Set.insert (proseId p) v
                _             -> v
     viewed .= v'
