@@ -79,6 +79,45 @@ jobs:
           path: public/game.json
           if-no-files-found: error
 
+  # Build the release bundler the way release.yml does — with a stock ghcup GHC,
+  # not nix — so the portable linux-x64 binary is exercised on every PR (catching
+  # a break before a tag is cut) and, on main, this run warms the bundler cache.
+  # release.yml runs only on tags, and tag-scoped caches are not shared between
+  # tags; caches created on the default branch are visible to all refs, so this
+  # main run is what makes a release restore the cache instead of recompiling.
+  # Uses the same cache path and key as release.yml's bundler job.
+  release-bundler:
+    name: Build release bundler (ghcup)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🎩 Set up GHC and cabal (ghcup)
+        id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6.7'
+          cabal-version: '3.12'
+
+      - name: 💾 Cache the cabal store and build outputs
+        uses: actions/cache@v4
+        with:
+          # Same path/key as release.yml's bundler job. Cache the store at the
+          # path haskell-actions/setup reports (cabal 3.12 uses an XDG dir, not
+          # ~/.cabal). This job warms the cache on main for release tags to reuse.
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
+          restore-keys: |
+            bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-
+
+      - name: 🔨 Build the bundler
+        run: |
+          cabal --project-file=cabal.project.native update
+          cabal --project-file=cabal.project.native build exe:rzk-game-bundle
+
   build-and-deploy:
     name: Build to wasm (nix) and deploy
     runs-on: ubuntu-latest
