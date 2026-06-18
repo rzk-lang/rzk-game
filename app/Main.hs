@@ -259,6 +259,16 @@ hsGameCheck = do
           solves = checkLevel lvl (levelSolution lvl) == Solved
       putStrLn ("first level: " <> T.unpack (levelTitle lvl))
       putStrLn (if holes && solves then "loaded-play: OK" else "LOADED-PLAY FAILED")
+      -- Formatting the editable region, inside wasm, against the real loaded
+      -- level: a formatted template still holes, a formatted solution still
+      -- solves, and formatting is stable (a fixpoint).
+      let ft = formatEditable (levelTemplate lvl)
+          fs = formatEditable (levelSolution lvl)
+          fHoles = case checkLevel lvl ft of Holes _ -> True; _ -> False
+          fSolves = checkLevel lvl fs == Solved
+          stable  = formatEditable ft == ft && formatEditable fs == fs
+      putStrLn (if fHoles && fSolves && stable
+                  then "loaded-format: OK" else "LOADED-FORMAT FAILED")
 
 -- | Headless proof of the export/import round-trip in wasm, against the same
 -- @localStorage@ shim @loadtest.mjs@ uses (driven by @progresscheck.mjs@). Seed
