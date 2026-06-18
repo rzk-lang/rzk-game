@@ -20,6 +20,8 @@ module RzkGame.Level
   , renderResult
   , resultErrorLines
   , hintMatchesGoal
+  , visibleHints
+  , plainHintCount
   ) where
 
 import           Data.Char            (isDigit, isSpace)
@@ -70,6 +72,37 @@ hintMatchesGoal :: Hint -> Text -> Bool
 hintMatchesGoal h goal = case hintWhenGoal h of
   Nothing  -> False
   Just sub -> not (T.null sub) && sub `T.isInfixOf` goal
+
+-- | The number of /plain/ hints in a list — those with no @when-goal@. These are
+-- the ones the player reveals one at a time; see 'visibleHints'.
+plainHintCount :: [Hint] -> Int
+plainHintCount = length . filter ((== Nothing) . hintWhenGoal)
+
+-- | Which hints to show, paired with their position in the authored list (so the
+-- UI can key them stably). Two kinds of hint behave differently:
+--
+--   * a /plain/ hint (no @when-goal@) is revealed one at a time by the player —
+--     the first @shown@ plain hints, by author order, are visible;
+--   * a /contextual/ hint (with a @when-goal@) is shown only once the player has
+--     revealed at least one hint (so a pristine level the player has not engaged
+--     with is never spoiled) /and/ its trigger matches the focused @goal@.
+--
+-- A contextual hint is therefore never reached by the manual reveal and never
+-- shown out of context: it appears exactly while it is relevant and disappears
+-- when the goal moves on. The result keeps the authored order.
+visibleHints :: [Hint] -> Maybe Text -> Int -> [(Int, Hint)]
+visibleHints hints mgoal shown = go 0 0 hints
+  where
+    engaged = shown > 0
+    go _ _ [] = []
+    go i r (h : rest) = case hintWhenGoal h of
+      Nothing
+        | r < shown -> (i, h) : go (i + 1) (r + 1) rest
+        | otherwise ->          go (i + 1) (r + 1) rest
+      Just _
+        | engaged && maybe False (hintMatchesGoal h) mgoal
+                    -> (i, h) : go (i + 1) r rest
+        | otherwise ->          go (i + 1) r rest
 
 -- | The outcome of checking an editable region against a level.
 --
