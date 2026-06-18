@@ -621,7 +621,7 @@ slotButton m (i, s) =
                  | pre       = " (pre-test)"
                  | otherwise = ""
         in ( [roleCls] <> [ "current" | current ]
-                       <> [ "solved" | doneThis ] <> [ "locked" | locked ]
+                       <> [ "solved" | doneThis ] <> [ "tile-locked" | locked ]
            , ico
            , [ H.span_ [ P.class_ "tile-num" ] [ text (ms (tshow (ix + 1))) ] ]
            , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note )
