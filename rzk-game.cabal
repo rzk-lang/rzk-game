@@ -21,6 +21,7 @@ library
     RzkGame.Highlight
     RzkGame.Spec
     RzkGame.Loader
+    RzkGame.Save
   build-depends:
       base
     , aeson
@@ -59,6 +60,7 @@ executable rzk-game
       "-optl-Wl,--export=hs_start"
       "-optl-Wl,--export=hs_selftest"
       "-optl-Wl,--export=hs_gamecheck"
+      "-optl-Wl,--export=hs_progresscheck"
     cpp-options: -DWASM
     if flag(interactive)
       cpp-options: -DINTERACTIVE

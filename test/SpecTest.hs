@@ -26,8 +26,10 @@ import           RzkGame.Content      (gameLevels, gameSections)
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
+import           RzkGame.Save         (decodeArchive, encodeArchive)
 import           RzkGame.Spec         (goalFromTemplate, levelProse,
                                       splitLevelSource)
+import qualified Data.List            as List
 
 main :: IO ()
 main = do
@@ -90,6 +92,31 @@ main = do
     Right json -> case buildGame json of
       Left err   -> check ("buildGame on public/game.json: " <> T.unpack err) False
       Right secs -> check "bundled sections equal RzkGame.Content" (secs == gameSections)
+
+  -- 6. The progress-archive codec round-trips, rejects an unknown version, and
+  --    drops non-string ("junk") values. Order is not significant, so compare
+  --    sorted: encodeArchive emits a JSON object, whose key order is not the
+  --    input order.
+  putStrLn "== RzkGame.Save: archive codec round-trips, rejects junk =="
+  let sample = [ ("rzk-game-progress", "0,1,2")
+               , ("rzk-game-viewed",   "morphisms-intro,functions-intro")
+               , ("rzk-game-pretest",  "map-point=familiar")
+               , ("rzk-game-draft-0",  "#def my-id (A : U) (x : A)\n  : hom A x x\n  := \\ t -> x")
+               ] :: [(Text, Text)]
+      isLeft = either (const True) (const False)
+  check "round-trips a key/value list"
+    (fmap List.sort (decodeArchive (encodeArchive sample)) == Right (List.sort sample))
+  check "empty archive round-trips"
+    (decodeArchive (encodeArchive []) == Right [])
+  check "unknown version is rejected"
+    (isLeft (decodeArchive "{\"version\": 2, \"saved\": {\"k\": \"v\"}}"))
+  check "missing version is rejected"
+    (isLeft (decodeArchive "{\"saved\": {}}"))
+  check "malformed JSON is rejected"
+    (isLeft (decodeArchive "not json {"))
+  check "non-string values are dropped"
+    (fmap List.sort (decodeArchive "{\"version\": 1, \"saved\": {\"a\": \"x\", \"b\": 123, \"c\": true}}")
+       == Right [("a", "x")])
 
   n <- readIORef failed
   if n == 0
