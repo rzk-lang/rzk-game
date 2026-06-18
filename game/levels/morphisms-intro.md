@@ -1,7 +1,7 @@
 ---
 id: morphisms-intro
-title: "Start here"
 role: bridge-in
+title: Start here
 ---
 
 In directed type theory a **morphism** $x \to y$ is a path along the directed interval $\Delta^1$, and a **triangle** (`hom2`) is a map out of the $2$-simplex $\Delta^2$. This first module builds them by hand.
