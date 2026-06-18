@@ -2,8 +2,14 @@
 
 -- | Hand-authored level content. (Later this comes from a game spec; see the
 -- roadmap's Phase 3.) For now, the first Rzk-native level: a @hom2@ filler.
+--
+-- The levels are grouped into BOPPPS-style 'Section's ('gameSections'). The flat
+-- 'gameLevels' is derived from them, in the same global order as before, so the
+-- index-keyed progress and drafts stay compatible.
 module RzkGame.Content
   ( gameLevels
+  , gameSections
+  , gameSlots
   , idMorphismLevel
   , constTriangleLevel
   , hom2Level
@@ -14,25 +20,144 @@ module RzkGame.Content
   , composeWitnessLevel
   ) where
 
-import           Data.Text (Text)
-import qualified Data.Text as T
+import           Data.Text     (Text)
+import qualified Data.Text     as T
 
 import           RzkGame.Level
+import           RzkGame.Section
 
--- | The levels, in play order, easiest first. (Later this comes from a game
--- spec; see the roadmap's Phase 3.) The ramp introduces one idea at a time:
--- a 1-dimensional morphism, then the constant 2-simplex, then the two
--- degenerate triangles that reuse a non-trivial edge.
+-- | The levels, in play order, easiest first, derived from 'gameSections'. The
+-- global order is @[my-id, const-triangle, rut, lut, map-point, ap-hom, compose,
+-- compose-witness]@; preserve it, since progress and drafts are keyed by this
+-- index (see the handoff note).
 gameLevels :: [Level]
-gameLevels =
-  [ idMorphismLevel
-  , constTriangleLevel
-  , hom2Level
-  , homLeftUnitLevel
-  , mapPointLevel
-  , apHomLevel
-  , composeLevel
-  , composeWitnessLevel
+gameLevels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections ]
+
+-- | The flattened navigation sequence: prose and puzzles interleaved, with
+-- puzzles numbered by their global index.
+gameSlots :: [Slot]
+gameSlots = slotsOfSections gameSections
+
+-- | The game's BOPPPS-style modules. BOPPPS structure is recommended, not
+-- mandatory: prose blocks carry an optional role tag and may sit anywhere. The
+-- three sections demonstrate the mechanics — a starred extra (the left-unit
+-- triangle), a pre-test that gates a dependent level (functions on cells), and a
+-- mid-section aside (the associativity preview).
+gameSections :: [Section]
+gameSections =
+  [ Section "morphisms" "Morphisms and triangles"
+      [ SProse  proseMorphismsIntro
+      , SPuzzle (core  "my-id"          idMorphismLevel)
+      , SPuzzle (core  "const-triangle" constTriangleLevel)
+      , SPuzzle (core  "rut"            hom2Level)
+      , SPuzzle (extra "lut"            homLeftUnitLevel)
+      , SProse  proseMorphismsSummary
+      ]
+  , Section "functions" "Functions act on cells"
+      [ SProse  proseFunctionsIntro
+      , SPuzzle (pretest "map-point" mapPointLevel functionsRemedy)
+      , SPuzzle ((core "ap-hom" apHomLevel) { puzzlePrereqs = ["map-point"] })
+      , SProse  proseFunctionsSummary
+      ]
+  , Section "composition" "Composition in Segal types"
+      [ SProse  proseCompositionIntro
+      , SPuzzle (core "compose" composeLevel)
+      , SProse  proseAssociativityNote
+      , SPuzzle ((core "compose-witness" composeWitnessLevel)
+                   { puzzlePrereqs = ["compose"] })
+      , SProse  proseCompositionSummary
+      ]
+  ]
+
+-- | Smart constructors for the common puzzle roles, so the section list above
+-- reads as content rather than record boilerplate.
+core :: Text -> Level -> PuzzleItem
+core pid lvl = PuzzleItem lvl pid Core [] []
+
+extra :: Text -> Level -> PuzzleItem
+extra pid lvl = PuzzleItem lvl pid Extra [] []
+
+pretest :: Text -> Level -> [Remedy] -> PuzzleItem
+pretest pid lvl = PuzzleItem lvl pid PreTest []
+
+-- | Remediation for the @map-point@ pre-test: where to send a player who is not
+-- yet comfortable that functions act on cells.
+functionsRemedy :: [Remedy]
+functionsRemedy =
+  [ Remedy "Review: Morphisms and triangles" (ToSection "morphisms")
+  , Remedy "sHoTT: the Segal-types chapter"
+      (ToExternal "https://rzk-lang.github.io/sHoTT/simplicial-hott/05-segal-types.rzk/")
+  ]
+
+-- | Section prose (Markdown + TeX, rendered by @prose.js@). Backslashes are
+-- doubled for Haskell; @\\n\\n@ separates paragraphs.
+proseMorphismsIntro :: Prose
+proseMorphismsIntro = Prose "morphisms-intro" "Start here" (Just BridgeIn) $ T.concat
+  [ "In directed type theory a **morphism** $x \\to y$ is a path along the "
+  , "directed interval $\\Delta^1$, and a **triangle** (`hom2`) is a map out of "
+  , "the $2$-simplex $\\Delta^2$. This first module builds them by hand.\n\n"
+  , "*By the end you will be able to:* construct the identity morphism, fill the "
+  , "constant triangle, and reparametrise an edge to fill a degenerate (unit) "
+  , "triangle. The mirror **left-unit** triangle is marked ★ — optional "
+  , "enrichment you may skip."
+  ]
+
+proseMorphismsSummary :: Prose
+proseMorphismsSummary = Prose "morphisms-summary" "Wrap-up" (Just Summary) $ T.concat
+  [ "You can now build morphisms as paths and fill triangles by reusing an edge "
+  , "under a change of coordinates. These degenerate triangles needed no extra "
+  , "hypotheses — the next module brings in functions."
+  ]
+
+proseFunctionsIntro :: Prose
+proseFunctionsIntro = Prose "functions-intro" "Start here" (Just BridgeIn) $ T.concat
+  [ "A function $g : A \\to B$ does more than map points: it carries whole "
+  , "cells. Applying $g$ along a path gives a path, so a function acts on "
+  , "morphisms, not just points — this is **functoriality**.\n\n"
+  , "This module opens with a quick **pre-test**. If functoriality is new to "
+  , "you, say so: you will get a pointer to review first, and the dependent "
+  , "level will wait for you.\n\n"
+  , "*By the end you will be able to:* carry a point and a morphism along a "
+  , "function."
+  ]
+
+proseFunctionsSummary :: Prose
+proseFunctionsSummary = Prose "functions-summary" "Wrap-up" (Just Summary) $ T.concat
+  [ "A function preserves cells: it sends points to points and morphisms to "
+  , "morphisms. With functoriality in hand, the last module tackles genuine "
+  , "composition."
+  ]
+
+proseCompositionIntro :: Prose
+proseCompositionIntro = Prose "composition-intro" "Start here" (Just BridgeIn) $ T.concat
+  [ "Every construction so far was free. **Composition** needs a hypothesis: a "
+  , "type is **Segal** when each composable pair of arrows has a unique filler "
+  , "triangle. The composite is read off the centre of that contractible "
+  , "space.\n\n"
+  , "*By the end you will be able to:* extract the composite arrow and recover "
+  , "the triangle that witnesses it."
+  ]
+
+-- | A mid-section aside (a prose pseudo-level that sits /between/ two puzzles),
+-- previewing associativity and linking the sHoTT source. We do not build the
+-- associativity levels here; this note points the way.
+proseAssociativityNote :: Prose
+proseAssociativityNote = Prose "composition-assoc" "Aside: associativity" (Just Note) $ T.concat
+  [ "**Looking ahead: associativity.** Once composition exists, the natural "
+  , "question is whether $(h \\circ g) \\circ f = h \\circ (g \\circ f)$. In a "
+  , "Segal type it does, by a slick argument: the composition witnesses become "
+  , "arrows in the arrow type $\\mathsf{arr}\\,A$, which is *itself* Segal, so "
+  , "composing them builds a $3$-simplex (a tetrahedron) whose uniqueness forces "
+  , "both bracketings to agree. We do not prove it here — see the "
+  , "[sHoTT chapter on associativity]"
+  , "(https://rzk-lang.github.io/sHoTT/simplicial-hott/05-segal-types.rzk/#associativity)."
+  ]
+
+proseCompositionSummary :: Prose
+proseCompositionSummary = Prose "composition-summary" "Wrap-up" (Just Summary) $ T.concat
+  [ "In a Segal type, composition exists and comes with a witnessing triangle — "
+  , "the two halves of one centre of contraction. That is the structure that "
+  , "makes a type behave like an $(\\infty,1)$-category."
   ]
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
