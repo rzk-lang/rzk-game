@@ -25,6 +25,10 @@
     .prose > :last-child { margin-bottom: 0; }
     .prose code { font-family: ui-monospace, monospace; font-size: .9em;
                   background: #f0f0f0; padding: .05rem .25rem; border-radius: 3px; }
+    /* A fenced ```rzk block (e.g. a "Useful here" lemma list) is a <pre><code>;
+       drop the inline-code chrome so only the <pre> box shows. */
+    .prose pre code { background: none; padding: 0; border-radius: 0;
+                      font-size: .85rem; }
     .prose .katex-display { margin: .5rem 0; }
     /* The conclusion prose is always in the DOM (injected by id) and revealed
        only once the level is solved. */
