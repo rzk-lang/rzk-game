@@ -1,0 +1,88 @@
+title: "Rzk Game — Morphisms"
+
+# The first world, lifted out of RzkGame.Content into data. The rzk code for each
+# puzzle lives in the referenced levels/*.rzk.md file, split into prelude /
+# template / solution blocks; the prose lives here.
+sections:
+  - id: morphisms
+    title: "Morphisms and triangles"
+    items:
+      - prose:
+          id: morphisms-intro
+          title: "Start here"
+          role: bridge-in
+          text: |-
+            In directed type theory a **morphism** $x \to y$ is a path along the directed interval $\Delta^1$, and a **triangle** (`hom2`) is a map out of the $2$-simplex $\Delta^2$. This first module builds them by hand.
+
+            *By the end you will be able to:* construct the identity morphism, fill the constant triangle, and reparametrise an edge to fill a degenerate (unit) triangle. The mirror **left-unit** triangle is marked ★ — optional enrichment you may skip.
+
+      - puzzle:
+          id: my-id
+          role: core
+          file: levels/my-id.rzk.md
+          title: "The identity morphism"
+          statement: "hom A x x"
+          prereqs: []
+          intro: |-
+            A morphism $x \to y$ in $A$ is a path along the directed interval $\Delta^1$. The simplest one is the identity: the morphism from $x$ to itself that just stays put. Both endpoints of the path are $x$, so a constant path will do. Build it.
+          conclusion: |-
+            The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all.
+          inventory:
+            - "x        : A"
+            - "id-hom   : (A : U) → (x : A) → hom A x x"
+            - "λ-intro  : introduce the interval coordinate"
+
+      - puzzle:
+          id: const-triangle
+          role: core
+          file: levels/const-triangle.rzk.md
+          title: "The constant triangle"
+          statement: "hom2 A x x x (id-hom A x) (id-hom A x) (id-hom A x)"
+          prereqs: []
+          intro: |-
+            A `hom2` is a triangle: a map out of the 2-simplex $\Delta^2$. The simplest one is constant — every edge is the identity at a single point $x$. Introduce the two coordinates, then find the point of $A$ that sits on all three edges.
+          conclusion: |-
+            Every boundary asked for $x$, so the constant function fills the whole triangle. In the next levels one edge becomes a genuine morphism, and the point has to vary along a coordinate.
+          inventory:
+            - "x        : A"
+            - "id-hom   : (A : U) → (x : A) → hom A x x"
+            - "λ-intro  : introduce the two cube coordinates"
+
+      - puzzle:
+          id: rut
+          role: core
+          file: levels/rut.rzk.md
+          title: "The right-unit triangle"
+          statement: "hom2 A x y y f (id-hom A y) f"
+          prereqs: []
+          intro: |-
+            Now an edge becomes a genuine morphism. The hypotenuse of a `hom2` is the composite of its other two edges. Most triangles need $A$ to be Segal — but some are free. Given $f : x \to y$, the triangle whose right edge is the identity at $y$ has $f$ itself as its hypotenuse. This time the point must vary along the first coordinate. Build it.
+          conclusion: |-
+            The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs.
+          inventory:
+            - "f        : hom A x y"
+            - "id-hom   : (A : U) → (x : A) → hom A x x"
+            - "λ-intro  : introduce the cube coordinates"
+
+      - puzzle:
+          id: lut
+          role: extra
+          file: levels/lut.rzk.md
+          title: "The left-unit triangle"
+          statement: "hom2 A x x y (id-hom A x) f f"
+          prereqs: []
+          intro: |-
+            Now the mirror image. Given $f : x \to y$, the triangle whose left edge is the identity at $x$ also has $f$ as its hypotenuse — but this time the degenerate copy of $f$ must vary in the other coordinate. Build it.
+          conclusion: |-
+            The same edge $f$, reparametrised in the other coordinate. The right-unit triangle used the first coordinate; the left-unit one uses the second.
+          inventory:
+            - "f        : hom A x y"
+            - "id-hom   : (A : U) → (x : A) → hom A x x"
+            - "λ-intro  : introduce the cube coordinates"
+
+      - prose:
+          id: morphisms-summary
+          title: "Wrap-up"
+          role: summary
+          text: |-
+            You can now build morphisms as paths and fill triangles by reusing an edge under a change of coordinates. These degenerate triangles needed no extra hypotheses — the next module brings in functions.
