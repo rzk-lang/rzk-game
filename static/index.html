@@ -4,15 +4,49 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rzk Game</title>
+  <!-- Self-hosted KaTeX + marked for Markdown/TeX prose (see prose.js). These
+       regular scripts run before the deferred app module, so globalThis.renderProse
+       is defined by the time the wasm app loads a level. -->
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/marked/marked.min.js"></script>
+  <script src="prose.js"></script>
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
+    /* Prose is set in a clean sans-serif for on-screen readability; math is
+       rendered separately by KaTeX in its own fonts, so the prose font needs no
+       math glyph coverage. Code, panels, and buttons keep their own fonts. */
+    h1, h2, h3, p, summary, .nav-current {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    /* Markdown/TeX prose (rendered to HTML by prose.js, injected as innerHTML). */
+    .prose > :first-child { margin-top: 0; }
+    .prose > :last-child { margin-bottom: 0; }
+    .prose code { font-family: ui-monospace, monospace; font-size: .9em;
+                  background: #f0f0f0; padding: .05rem .25rem; border-radius: 3px; }
+    .prose .katex-display { margin: .5rem 0; }
+    /* The conclusion prose is always in the DOM (injected by id) and revealed
+       only once the level is solved. */
+    .concl.hidden { display: none; }
+    .concl.shown { margin: .4rem 0 0; padding: .6rem; background: #eef7ee;
+                   border: 1px solid #cfe6cf; border-radius: 6px; }
+    header.game { border-bottom: 1px solid #eee; margin-bottom: 1rem;
+                  padding-bottom: .5rem; }
+    header.game h1 { margin: 0; font-size: 1.5rem; }
+    header.game .tagline { margin: .2rem 0 0; color: #777; font-size: .9rem; }
     h2 { margin-bottom: .2rem; }
     h3 { margin: 1rem 0 .3rem; font-size: 1rem; color: #444; }
     pre { background: #f5f5f5; padding: .6rem; border-radius: 6px;
           overflow-x: auto; white-space: pre-wrap; }
     .goal { background: #eef; }
-    .prelude { color: #555; font-size: .85rem; }
+    /* The prelude is collapsed by default (a <details>) and syntax-highlighted
+       with the same .tok-* classes as the editor; #555 is the plain-token base. */
+    .prelude-wrap { margin: .3rem 0 .6rem; }
+    .prelude-wrap summary { cursor: pointer; font-weight: 600; color: #444;
+                            font-size: .95rem; }
+    .prelude { color: #555; font-size: .85rem; margin-top: .3rem;
+               white-space: pre-wrap; overflow-wrap: break-word; }
     /* L1 editor: a transparent textarea stacked over a highlighted <pre>.
        Both share identical metrics so the coloured layer aligns with typing. */
     .editor-wrap { position: relative; }
@@ -52,6 +86,29 @@
     .buttons { margin: .5rem 0; }
     .actions { margin: .3rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
+    /* Primary (Check) / secondary (Reset) hierarchy for the main actions. */
+    .buttons button.primary { background: #2563eb; color: #fff;
+                              border: 1px solid #1d4ed8; border-radius: 6px;
+                              cursor: pointer; }
+    .buttons button.primary:hover { background: #1d4ed8; }
+    .buttons button.secondary { background: #fff; color: #444;
+                                border: 1px solid #ccc; border-radius: 6px;
+                                cursor: pointer; }
+    .buttons button.secondary:hover { background: #f3f3f3; }
+    .buttons button:disabled { color: #bbb; cursor: default; }
+    .buttons button:disabled:hover { background: #fff; }
+    .levels button:hover { border-color: #999; }
+    .advance button:hover { background: #cfe9cf; }
+    /* Linear prev / current / next navigation footer. */
+    .nav { display: flex; align-items: center; justify-content: space-between;
+           gap: .5rem; margin: 1.2rem 0 .3rem; padding-top: .6rem;
+           border-top: 1px solid #eee; }
+    .nav-current { font-weight: 600; color: #444; text-align: center;
+                   flex: 1; }
+    .nav button { margin: 0; background: #fff; border: 1px solid #ccc;
+                  border-radius: 6px; cursor: pointer; }
+    .nav button:not(:disabled):hover { border-color: #999; }
+    .nav button:disabled { color: #bbb; cursor: default; border-color: #eee; }
     /* Two-part move button: a colour-coded kind chip + a syntax-highlighted
        filler term. The button itself is a flex container with no padding; the
        two parts supply their own. */
@@ -68,6 +125,8 @@
     button.refine .move-term { display: flex; align-items: center;
                     padding: .35rem .6rem; color: #222;
                     font-family: ui-monospace, monospace; white-space: pre; }
+    button.refine:hover { border-color: #66a;
+                          box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
     .err { background: #fdd; padding: .6rem; border-radius: 6px; }
     .err p { margin: 0 0 .4rem; }
     .errdump { max-height: 14rem; overflow: auto; margin: 0;
@@ -86,7 +145,6 @@
            font-family: ui-monospace, monospace; font-size: .9rem; }
     .ctx .name { color: #225; }
     .ctx .type { color: #555; }
-    .inventory { font-family: ui-monospace, monospace; font-size: .9rem; }
     .muted { color: #888; font-style: italic; }
   </style>
 </head>

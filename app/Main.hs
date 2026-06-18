@@ -14,10 +14,12 @@ module Main (main) where
 import           Miso
 import qualified Miso.Html          as H
 import qualified Miso.Html.Property as P
+import           Miso.DSL           (jsg2)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
 import           Control.Monad      (when)
+import           Data.List          (find)
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
@@ -31,6 +33,21 @@ import           RzkGame.Content    (apHomLevel, composeLevel,
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
+-- | Inject rendered prose (Markdown/TeX via @prose.js@) into a div miso has just
+-- created, given its 'DOMRef' from an @onCreatedWith@ hook.
+--
+-- The injected DOM lives entirely outside miso's virtual DOM: the div is an
+-- empty leaf as far as miso is concerned, so writing its content here cannot
+-- desync the diff (an earlier version injected via a vdom @innerHTML@ prop, which
+-- crashed with a stale-DOM-ref @removeChild@ when the result panel restructured
+-- on a solve). We call through the DSL's @jsg2@ rather than a raw @foreign
+-- import@ because marshalling a @JSString@ argument directly trips a wasm codegen
+-- bug.
+renderProseInto :: DOMRef -> MisoString -> IO ()
+renderProseInto ref src = do
+  _ <- jsg2 "renderInto" ref src
+  pure ()
+
 -- | UI state: which level is being played, the player's current text, the last
 -- check result, and the set of solved levels (by index). The solved set is
 -- persisted to @localStorage@, so progress survives a reload.
@@ -39,6 +56,7 @@ data Model = Model
   , _editable :: MisoString
   , _result   :: CheckResult
   , _solved   :: Set Int
+  , _history  :: [MisoString]   -- ^ prior editable states (newest first), for Undo
   } deriving (Eq)
 
 levelIx :: Lens Model Int
@@ -53,6 +71,9 @@ result = lens _result $ \m v -> m { _result = v }
 solved :: Lens Model (Set Int)
 solved = lens _solved $ \m v -> m { _solved = v }
 
+history :: Lens Model [MisoString]
+history = lens _history $ \m v -> m { _history = v }
+
 -- | The level currently being played.
 currentLevel :: Model -> Level
 currentLevel m = nthLevel (_levelIx m)
@@ -65,13 +86,15 @@ nthLevel i = head (drop i gameLevels)
 data Action
   = SetEditable MisoString
   | Refine T.Text
+  | Undo                    -- ^ revert the last tap-to-refine or Reset
   | Check
   | Reset
   | SelectLevel Int
   | Init                    -- ^ dispatched at mount: load saved progress + draft
   | SetSolved (Set Int)
   | ApplyText Int MisoString  -- ^ install a level's restored draft (or template)
-  deriving (Eq)
+  | InitProse MisoString DOMRef  -- ^ inject prose into a just-created div (onCreatedWith)
+  -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
 #ifdef INTERACTIVE
@@ -164,6 +187,18 @@ hsSelftest = do
   putStrLn "== compose-witness tap chain: spine then x y z f g (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain composeWitnessLevel ["second (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
+  putStrLn "== soundness: an empty proof is never Solved (expect OK) =="
+  putStrLn (if all (\lvl -> checkLevel lvl "" /= Solved) gameLevels
+              then "empty-not-solved: OK" else "EMPTY-NOT-SOLVED FAILED")
+  putStrLn "== soundness: a wrong-typed goal is not Solved (expect TypeError) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level "#def rut (A : U) : U := A")))
+  putStrLn "== soundness: helper definitions are allowed (expect Solved) =="
+  putStrLn (T.unpack (renderResult (checkLevel hom2Level (T.unlines
+    [ "#def rut-edge (A : U) (x y : A) (f : hom A x y) : hom A x y := f"
+    , "#def rut (A : U) (x y : A) (f : hom A x y)"
+    , "  : hom2 A x y y f (id-hom A y) f"
+    , "  := \\ (t , s) → rut-edge A x y f t"
+    ]))))
   putStrLn "== L1 highlighter: lossless on every template (expect OK) =="
   let lossless lvl = T.concat [ tx | Tok _ tx <- highlight (levelTemplate lvl) ]
                        == levelTemplate lvl
@@ -189,7 +224,7 @@ initModel = loadLevel 0
 -- the focused hole and its moves show without a first manual Check. The solved
 -- set starts empty; @LoadProgress@ fills it from storage at mount.
 loadLevel :: Int -> Model
-loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty
+loadLevel i = Model i (ms template) (checkLevel lvl template) Set.empty []
   where
     lvl      = nthLevel i
     template = levelTemplate lvl
@@ -236,6 +271,7 @@ loadDraftAction :: Int -> IO Action
 loadDraftAction i =
   ApplyText i . fromMaybe (ms (levelTemplate (nthLevel i))) <$> getLocalStorage (draftKey i)
 
+
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
   SetEditable s -> do
@@ -243,10 +279,13 @@ updateModel = \case
     i <- use levelIx
     io_ (saveDraft i s)
   SelectLevel i -> do
+    history .= []            -- each level keeps its own, fresh undo history
     reload i
     io (loadDraftAction i)   -- override the template with a saved draft, if any
   Reset         -> do
     i <- use levelIx
+    e <- use editable
+    history %= (e :)         -- a mistaken Reset can be undone
     reload i
     io_ (removeDraft i)      -- drop the draft so the template stays on next load
   Init          -> do
@@ -254,6 +293,7 @@ updateModel = \case
     i <- use levelIx
     io (loadDraftAction i)
   SetSolved s   -> solved .= s
+  InitProse src ref -> io_ (renderProseInto ref src)
   ApplyText i s -> do
     -- Ignore a draft that arrived after the player moved to another level.
     cur <- use levelIx
@@ -263,12 +303,23 @@ updateModel = \case
   Refine ins    -> do
     i <- use levelIx
     e <- use editable
+    history %= (e :)         -- remember the pre-refine text so the tap can be undone
     let e'  = refineFirstHole ins (fromMisoString e)
         res = checkLevel (nthLevel i) e'
     editable .= ms e'
     result   .= res
     io_ (saveDraft i (ms e'))
     recordSolved i res
+  Undo          -> do
+    hs <- use history
+    case hs of
+      []            -> pure ()
+      (prev : rest) -> do
+        i <- use levelIx
+        history  .= rest
+        editable .= prev
+        result   .= checkLevel (nthLevel i) (fromMisoString prev)
+        io_ (saveDraft i prev)
   Check         -> do
     i <- use levelIx
     e <- use editable
@@ -299,37 +350,64 @@ updateModel = \case
 
 viewModel :: props -> Model -> View Model Action
 viewModel _ m =
-  H.section_ [ P.class_ "level" ]
-    [ levelPicker m
-
-    , H.h2_ [] [ text (ms (levelTitle lvl)) ]
-    , H.p_  [] [ text (ms (levelIntro lvl)) ]
-
-    , H.h3_ [] [ text "Goal" ]
-    , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
-
-    , H.h3_ [] [ text "Prelude (given)" ]
-    , H.pre_ [ P.class_ "prelude" ] [ text (ms (levelPrelude lvl)) ]
-
-    , H.h3_ [] [ text "Your proof" ]
-    , editorView (m ^. editable)
-    , H.h3_ [] [ text "Moves" ]
-    , movesView m
-    , H.div_ [ P.class_ "buttons" ]
-        [ H.button_ [ H.onClick Check ] [ text "Check" ]
-        , H.button_ [ H.onClick Reset ] [ text "Reset" ]
+  H.div_ []
+    [ H.header_ [ P.class_ "game" ]
+        [ H.h1_ [] [ text "Rzk Game" ]
+        , H.p_ [ P.class_ "tagline" ]
+            [ text "An interactive Rzk proof game — fill the holes." ]
         ]
+    , H.section_ [ P.class_ "level" ]
+        [ levelPicker m
 
-    , H.h3_ [] [ text "Result" ]
-    , resultView lvl (m ^. result)
-    , advanceView m
+        , H.h2_ [] [ text (ms (titleMark <> levelTitle lvl)) ]
+        -- Prose is injected on creation (see InitProse); miso keeps this div an
+        -- empty leaf. Keyed by level so the hook re-fires when the level changes.
+        , H.div_ [ P.class_ "prose"
+                 , key_ (ms ("intro-" <> show (_levelIx m)))
+                 , onCreatedWith (InitProse (ms (levelIntro lvl)))
+                 ] []
 
-    , H.h3_ [] [ text "Inventory" ]
-    , H.ul_ [ P.class_ "inventory" ]
-        [ H.li_ [] [ text (ms i) ] | i <- levelInventory lvl ]
+        , H.h3_ [] [ text "Goal" ]
+        , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
+
+        , preludeView lvl
+
+        , H.h3_ [] [ text "Your proof" ]
+        , editorView (m ^. editable)
+        , H.h3_ [] [ text "Moves" ]
+        , movesView m
+        , H.div_ [ P.class_ "buttons" ]
+            [ H.button_ [ P.class_ "primary",   H.onClick Check ] [ text "Check" ]
+            , H.button_ ( [ P.class_ "secondary", H.onClick Undo ]
+                            <> [ P.disabled_ | null (m ^. history) ] )
+                [ text "Undo" ]
+            , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
+            ]
+
+        , H.h3_ [] [ text "Result" ]
+        , resultView (m ^. result)
+        , conclusionView m
+        , advanceView m
+        , navBar m
+        ]
     ]
   where
-    lvl = currentLevel m
+    lvl       = currentLevel m
+    -- A solved tick on the current level's heading, echoing the level picker.
+    titleMark = if isSolved m (_levelIx m) then "✓ " else ""
+
+-- | The level's read-only prelude. It is reference material, not the focus, so
+-- it is collapsed by default; opening it reveals the given definitions,
+-- syntax-highlighted with the same tokeniser as the editor.
+preludeView :: Level -> View Model Action
+preludeView lvl =
+  H.details_ [ P.class_ "prelude-wrap" ]
+    [ H.summary_ [] [ text "Prelude (given)" ]
+    , H.pre_ [ P.class_ "prelude" ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- highlight (levelPrelude lvl)
+        ]
+    ]
 
 -- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
 -- The pre is absolutely positioned to fill the wrapper, which is sized by the
@@ -422,25 +500,53 @@ moveButton kind ins =
       Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
       Give  -> ("give",            "kind-give")
 
--- | When the level is solved, offer a step onward: the next level if one
--- follows, otherwise a closing line once every level is done.
+-- | When the level is solved, offer a step onward: the next /unsolved/ level,
+-- searching forward and wrapping past the end, so the button still helps on the
+-- last level when an earlier one is unfinished. A closing line shows once every
+-- level is done.
 advanceView :: Model -> View Model Action
 advanceView m
-  | Solved <- m ^. result, hasNext =
-      H.div_ [ P.class_ "advance" ]
-        [ H.button_ [ H.onClick (SelectLevel next) ] [ text "Next level →" ] ]
-  | Solved <- m ^. result, allSolved =
-      H.div_ [ P.class_ "advance" ]
-        [ H.p_ [ P.class_ "all-done" ]
-            [ text "🏆 You've solved every level. The end — for now!" ] ]
+  | Solved <- m ^. result =
+      case nextUnsolved m of
+        Just j  -> H.div_ [ P.class_ "advance" ]
+                     [ H.button_ [ H.onClick (SelectLevel j) ]
+                         [ text "Next unsolved level →" ] ]
+        Nothing -> H.div_ [ P.class_ "advance" ]
+                     [ H.p_ [ P.class_ "all-done" ]
+                         [ text "🏆 You've solved every level. The end — for now!" ] ]
   | otherwise = text ""
-  where
-    next      = _levelIx m + 1
-    hasNext   = next < length gameLevels
-    allSolved = solvedCount m == length gameLevels
 
-resultView :: Level -> CheckResult -> View Model Action
-resultView lvl = \case
+-- | The next unsolved level, searching forward from the current one and wrapping
+-- past the end (the current level is excluded). 'Nothing' when all are solved.
+nextUnsolved :: Model -> Maybe Int
+nextUnsolved m = find (not . isSolved m) order
+  where
+    n     = length gameLevels
+    order = [ (_levelIx m + k) `mod` n | k <- [1 .. n - 1] ]
+
+-- | A linear navigation bar: previous level, the current level's number, title,
+-- and solved status, then next level. Adjacent navigation, disabled at the ends;
+-- the level picker above remains the way to jump anywhere.
+navBar :: Model -> View Model Action
+navBar m =
+  H.div_ [ P.class_ "nav" ]
+    [ navButton "← Previous" (cur - 1) (cur > 0)
+    , H.span_ [ P.class_ "nav-current" ]
+        [ text (ms ( "Level " <> tshow (cur + 1) <> " / " <> tshow total
+                       <> " — " <> levelTitle (nthLevel cur)
+                       <> (if isSolved m cur then " ✓" else "") )) ]
+    , navButton "Next →" (cur + 1) (cur < total - 1)
+    ]
+  where
+    cur    = _levelIx m
+    total  = length gameLevels
+    tshow  = T.pack . show
+    navButton lbl j enabled =
+      H.button_ ( [ H.onClick (SelectLevel j) ] <> [ P.disabled_ | not enabled ] )
+        [ text lbl ]
+
+resultView :: CheckResult -> View Model Action
+resultView = \case
   NotChecked   -> H.pre_ [] [ text "(press Check)" ]
   ParseError e -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
   -- The rzk type-error formatter is verbose (a "when typechecking …" trace per
@@ -453,14 +559,27 @@ resultView lvl = \case
       ]
   Solved       ->
     H.div_ [ P.class_ "ok" ]
-      [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ]
-      , H.p_   [] [ text (ms (levelConclusion lvl)) ]
-      ]
+      [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ] ]
   Holes hs ->
     H.div_ [ P.class_ "holes" ]
       ( H.p_ [] [ text (ms (T.pack (show (length hs)) <> " hole(s) remaining")) ]
       : map holeView hs
       )
+
+-- | The level conclusion prose. The div is always present (its content is
+-- injected by id in 'renderProseIO'), so it is never created or destroyed during
+-- a result swap — it is simply revealed once the level is solved.
+conclusionView :: Model -> View Model Action
+conclusionView m =
+  H.div_ [ P.class_ (ms cls)
+         , key_ (ms ("concl-" <> show (_levelIx m)))
+         , onCreatedWith (InitProse (ms (levelConclusion (currentLevel m))))
+         ] []
+  where
+    cls :: T.Text
+    cls = case m ^. result of
+      Solved -> "prose concl shown"
+      _      -> "prose concl hidden"
 
 -- | Render one hole as a stack of labelled panels: goal, then any local
 -- hypotheses, cube variables, and tope assumptions.
