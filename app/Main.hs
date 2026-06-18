@@ -627,38 +627,35 @@ slotButton m (i, s) =
            , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note )
 
 -- | The role icons, drawn as inline SVG so they inherit the tile's colour
--- (@currentColor@) and stay crisp at any size. Every icon is a single @<path>@
--- with the same structure, differing only in its @d@: swapping one role icon for
--- another (e.g. a puzzle that becomes locked) is then a pure attribute change, so
--- miso patches one attribute rather than restructuring the SVG subtree — which
--- otherwise mispositioned the tile on the live swap. Paths use a @0 0 24 24@ box,
--- each shape centred on @(12, 12)@.
-svgIcon :: MisoString -> View Model Action
-svgIcon d =
-  S.svg_ [ SP.viewBox_ "0 0 24 24", SP.fill_ "currentColor" ]
-    [ S.path_ [ SP.d_ d ] ]
+-- (@currentColor@) and stay crisp at any size. Each icon is a single @<path>@,
+-- so swapping one role icon for another (e.g. a puzzle that becomes locked) only
+-- changes attributes — miso never restructures the SVG subtree. Sizing comes from
+-- CSS (@.tile svg@), so the per-icon @viewBox@ just frames the path.
+svgIcon :: MisoString -> MisoString -> View Model Action
+svgIcon vb d =
+  S.svg_ [ SP.viewBox_ vb, SP.fill_ "currentColor" ] [ S.path_ [ SP.d_ d ] ]
 
 -- text lines (a document)
 icoProse :: View Model Action
-icoProse = svgIcon "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z"
+icoProse = svgIcon "0 0 24 24" "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z"
 
 -- a node (a filled disc)
 icoCore :: View Model Action
-icoCore = svgIcon "M12 7 A5 5 0 1 0 12 17 A5 5 0 1 0 12 7 Z"
+icoCore = svgIcon "0 0 24 24" "M12 7 A5 5 0 1 0 12 17 A5 5 0 1 0 12 7 Z"
 
 -- a diamond (a checkpoint)
 icoPretest :: View Model Action
-icoPretest = svgIcon "M12 3 L21 12 L12 21 L3 12 Z"
+icoPretest = svgIcon "0 0 24 24" "M12 3 L21 12 L12 21 L3 12 Z"
 
 -- a five-point star
 icoStar :: View Model Action
-icoStar = svgIcon
+icoStar = svgIcon "0 0 24 24"
   "M12 2 L14.7 8.6 L21.8 9.2 L16.4 13.9 L18 20.8 L12 17.1 L6 20.8 L7.6 13.9 L2.2 9.2 L9.3 8.6 Z"
 
--- a padlock (a filled shackle band over a body), as one even-odd-free contour set
+-- a padlock (Bootstrap Icons "lock-fill", MIT-licensed, a single filled path)
 icoLock :: View Model Action
-icoLock = svgIcon
-  "M7.5 11 V9 A4.5 4.5 0 0 1 16.5 9 V11 H14.5 V9 A2.5 2.5 0 0 0 9.5 9 V11 Z M6 11 H18 V19.5 H6 Z"
+icoLock = svgIcon "0 0 16 16"
+  "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 1-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 1-2-2"
 
 -- | @(done, total)@ over every required slot of the game.
 overallProgress :: Model -> (Int, Int)

@@ -72,12 +72,14 @@
     /* The level map lays items out as compact icon tiles (rounded squares). The
        icon names the role; the corner number and the title tooltip identify the
        item; classes carry state. This stays succinct as items multiply. */
-    .levels { margin: .2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .35rem; }
-    .tile { position: relative; width: 2.1rem; height: 2.1rem; padding: 0; margin: 0;
+    .levels { margin: .2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .35rem;
+              align-items: flex-start; }
+    .tile { position: relative; box-sizing: border-box; vertical-align: top;
+            width: 2.1rem; height: 2.1rem; padding: 0; margin: 0; flex: 0 0 auto;
             display: inline-flex; align-items: center; justify-content: center;
             background: #f4f4f4; border: 1px solid #ccc; border-radius: 8px;
             color: #5b6472; cursor: pointer; }
-    .tile svg { width: 1.15rem; height: 1.15rem; display: block; }
+    .tile svg { width: 1.2rem; height: 1.2rem; display: block; }
     .tile:hover { border-color: #888; }
     .tile.current { box-shadow: 0 0 0 2px #79c; border-color: #79c; }
     .tile-num { position: absolute; bottom: 0; right: .15rem; font-size: .55rem;
@@ -89,7 +91,7 @@
     /* States. */
     .tile.done, .tile.solved { background: #e7f7e7; border-color: #7c7; color: #2a7a2a; }
     .tile.solved .tile-num { color: #6a9a6a; }
-    .tile.locked { background: #f0ebeb; border-color: #d8c9c9; color: #a08c8c; }
+    .tile.locked { background: #efe6e6; border-color: #cbb4b4; color: #8a5a5a; }
     .tile.solved::after { content: "✓"; position: absolute; top: -5px; right: -5px;
         background: #2a7a2a; color: #fff; border-radius: 50%; width: .85rem;
         height: .85rem; font-size: .6rem; line-height: .85rem; text-align: center;
