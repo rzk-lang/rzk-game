@@ -39,7 +39,7 @@ import           Language.Rzk.Syntax  (parseModule)
 import           Rzk.Diagnostic       (locationOfTypeError)
 import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
                                        LocationInfo (..),
-                                       OutputDirection (BottomUp),
+                                       OutputDirection (TopDown),
                                        ppTypeErrorInScopedContext',
                                        typecheckModulesWithHoles)
 
@@ -272,7 +272,11 @@ checkLevel lvl editable =
              | null holes -> Solved
              | otherwise  -> Holes (map toHoleView holes)
   where
-    ppErr = T.pack . ppTypeErrorInScopedContext' BottomUp
+    -- 'TopDown' leads with the headline mismatch ("cannot unify …") and then the
+    -- "when typechecking" trace and the context, as an LSP diagnostic does.
+    -- 'BottomUp' reverses each block, which buries the message under the context
+    -- dump; we surface the message instead (see the Phase 5 UI-polish note).
+    ppErr = T.pack . ppTypeErrorInScopedContext' TopDown
 
     -- The editable region is concatenated after the prelude and a separating
     -- newline, so its first character sits this many lines into 'src' (1-based).
