@@ -17,6 +17,8 @@ module Main (main) where
 import           Miso
 import qualified Miso.Html          as H
 import qualified Miso.Html.Property as P
+import qualified Miso.Svg           as S
+import qualified Miso.Svg.Property  as SP
 import           Miso.DSL           (jsg2)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
@@ -580,30 +582,75 @@ levelMap m =
     countCls :: Int -> Int -> T.Text
     countCls d t = "section-count" <> if d == t && t > 0 then " done" else ""
 
--- | One slot button: a prose chip, or a numbered puzzle chip carrying solved /
--- locked / star marks.
+-- | One slot tile: a compact rounded square whose icon names the item's role
+-- (prose, ordinary puzzle, pre-test, or a starred extra), with the puzzle's
+-- number in the corner. State — current, viewed/solved, locked — is carried by
+-- the tile's classes; the full label lives in the @title@ tooltip, so the map
+-- stays succinct as sections and items grow. A locked tile shows a padlock.
 slotButton :: Model -> (Int, Slot) -> View Model Action
 slotButton m (i, s) =
-  H.button_ [ H.onClick (SelectSlot i), P.class_ (ms cls) ] [ text (ms label) ]
+  H.button_
+    [ H.onClick (SelectSlot i)
+    , P.class_ (ms (T.unwords ("tile" : classes)))
+    , P.title_ (ms tip)
+    ]
+    (icon : numBadge)
   where
     current = i == _slotIx m
-    cls = T.unwords (kindCls <> [ "current" | current ] <> stateCls)
-    (kindCls, stateCls, label) = case s of
+    (classes, icon, numBadge, tip) = case s of
       SlotProse _ p ->
         let v = Set.member (proseId p) (m ^. viewed)
-        in ( ["slot-prose"], [ "done" | v ]
-           , (if v then "✓ " else "") <> "📖 " <> proseTitle p )
+        in ( ["tile-prose"] <> [ "current" | current ] <> [ "done" | v ]
+           , icoProse, [], proseTitle p )
       SlotPuzzle _ ix z ->
         let solvedThis = Set.member ix (m ^. solved)
             locked = levelLocked slots (m ^. unlocked) (m ^. pretest) z
             star   = puzzleRole z == Extra
-            mark | solvedThis = "✓ "
-                 | locked     = "🔒 "
-                 | otherwise  = ""
-        in ( ["slot-puzzle"]
-           , [ "solved" | solvedThis ] <> [ "locked" | locked ] <> [ "star" | star ]
-           , mark <> tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z)
-               <> (if star then " ★" else "") )
+            pre    = puzzleRole z == PreTest
+            roleCls | star      = "tile-star"
+                    | pre       = "tile-pretest"
+                    | otherwise = "tile-core"
+            ico | locked    = icoLock
+                | star      = icoStar
+                | pre       = icoPretest
+                | otherwise = icoCore
+            note | star      = " (extra)"
+                 | pre       = " (pre-test)"
+                 | otherwise = ""
+        in ( [roleCls] <> [ "current" | current ]
+                       <> [ "solved" | solvedThis ] <> [ "locked" | locked ]
+           , ico
+           , [ H.span_ [ P.class_ "tile-num" ] [ text (ms (tshow (ix + 1))) ] ]
+           , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note )
+
+-- | The role icons, drawn as inline SVG so they inherit the tile's colour
+-- (@currentColor@) and stay crisp at any size. Paths use a @0 0 24 24@ box.
+svgIcon :: [View Model Action] -> View Model Action
+svgIcon = S.svg_ [ SP.viewBox_ "0 0 24 24", SP.fill_ "currentColor" ]
+
+icoProse :: View Model Action
+icoProse = svgIcon
+  [ S.path_ [ SP.d_ "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z" ] ]
+
+icoCore :: View Model Action
+icoCore = svgIcon [ S.circle_ [ SP.cx_ "12", SP.cy_ "12", SP.r_ "5" ] ]
+
+icoPretest :: View Model Action
+icoPretest = svgIcon [ S.polygon_ [ SP.points_ "12,3 21,12 12,21 3,12" ] ]
+
+icoStar :: View Model Action
+icoStar = svgIcon
+  [ S.polygon_
+      [ SP.points_
+          "12,2 14.7,8.6 21.8,9.2 16.4,13.9 18,20.8 12,17.1 6,20.8 7.6,13.9 2.2,9.2 9.3,8.6" ] ]
+
+icoLock :: View Model Action
+icoLock = svgIcon
+  [ S.path_ [ SP.d_ "M8.5 11 V8 a3.5 3.5 0 0 1 7 0 V11"
+            , SP.fill_ "none", SP.stroke_ "currentColor"
+            , SP.strokeWidth_ "2", SP.strokeLinecap_ "round" ]
+  , S.path_ [ SP.d_ "M6.5 11 H17.5 V19.5 H6.5 Z" ]
+  ]
 
 -- | @(done, total)@ over every required slot of the game.
 overallProgress :: Model -> (Int, Int)

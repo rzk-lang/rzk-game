@@ -69,12 +69,31 @@
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }
     .tok-op      { color: #0a7d62; }
-    .levels { margin: .2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
-    .levels button { margin: 0; background: #f0f0f0; border: 1px solid #ccc;
-                     border-radius: 6px; cursor: pointer; }
-    .levels button.current { background: #cde; border-color: #79c; font-weight: 600; }
-    .levels button.solved { background: #e7f7e7; border-color: #7c7; color: #285028; }
-    .levels button.solved.current { background: #cfe9cf; border-color: #4a4; }
+    /* The level map lays items out as compact icon tiles (rounded squares). The
+       icon names the role; the corner number and the title tooltip identify the
+       item; classes carry state. This stays succinct as items multiply. */
+    .levels { margin: .2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .35rem; }
+    .tile { position: relative; width: 2.1rem; height: 2.1rem; padding: 0; margin: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #f4f4f4; border: 1px solid #ccc; border-radius: 8px;
+            color: #5b6472; cursor: pointer; }
+    .tile svg { width: 1.15rem; height: 1.15rem; display: block; }
+    .tile:hover { border-color: #888; }
+    .tile.current { box-shadow: 0 0 0 2px #79c; border-color: #79c; }
+    .tile-num { position: absolute; bottom: 0; right: .15rem; font-size: .55rem;
+                line-height: 1; color: #9aa; font-variant-numeric: tabular-nums; }
+    /* Roles. */
+    .tile-prose   { color: #3a5a8a; background: #eef3fb; border-color: #c2d2ea; }
+    .tile-pretest { color: #9a7a1a; background: #fff8e8; border-color: #ecd9a6; }
+    .tile-star    { color: #b8860b; border-style: dashed; }
+    /* States. */
+    .tile.done, .tile.solved { background: #e7f7e7; border-color: #7c7; color: #2a7a2a; }
+    .tile.solved .tile-num { color: #6a9a6a; }
+    .tile.locked { background: #f0ebeb; border-color: #d8c9c9; color: #a08c8c; }
+    .tile.solved::after { content: "✓"; position: absolute; top: -5px; right: -5px;
+        background: #2a7a2a; color: #fff; border-radius: 50%; width: .85rem;
+        height: .85rem; font-size: .6rem; line-height: .85rem; text-align: center;
+        font-weight: 700; }
     .progress { margin: 0 0 .8rem; font-size: .85rem; color: #777; }
     .progress.done { color: #2a7a2a; font-weight: 600; }
     .advance { margin: .5rem 0; }
@@ -178,13 +197,6 @@
     .section-title { font-weight: 600; color: #333; font-size: .9rem; }
     .section-count { font-size: .78rem; color: #888; font-variant-numeric: tabular-nums; }
     .section-count.done { color: #2a7a2a; font-weight: 600; }
-    /* Prose ("text pseudo-level") buttons read differently from puzzle buttons. */
-    .levels button.slot-prose { background: #eef3fb; border-color: #c2d2ea; color: #2c3e57;
-                                font-style: italic; }
-    .levels button.slot-prose.current { background: #d8e6fb; border-color: #79c; font-weight: 600; }
-    .levels button.slot-prose.done { background: #eaf6ea; border-color: #bcdcbc; color: #285028; }
-    .levels button.slot-puzzle.locked { background: #f3f0f0; border-color: #d8c9c9; color: #887766; }
-    .levels button.slot-puzzle.star { border-style: dashed; }
     /* Section breadcrumb atop each slot page. */
     .breadcrumb { margin: .1rem 0 .3rem; font-size: .8rem; color: #888;
                   text-transform: none; }
