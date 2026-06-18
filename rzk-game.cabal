@@ -19,8 +19,12 @@ library
     RzkGame.Section
     RzkGame.Content
     RzkGame.Highlight
+    RzkGame.Spec
+    RzkGame.Loader
   build-depends:
       base
+    , aeson
+    , bytestring
     , containers
     , text
     , rzk
@@ -43,12 +47,57 @@ executable rzk-game
     miso (Miso.Prelude as Prelude),
     base hiding (Prelude)
   default-language: Haskell2010
+  -- miso builds only under the wasm GHC (it needs a newer template-haskell than
+  -- a stock native GHC ships). Off wasm, the app is not built — which also keeps
+  -- miso out of the native solve, so the library, bundler, and tests resolve.
+  if !arch(wasm32)
+    buildable: False
   if arch(wasm32)
     ghc-options:
       -no-hs-main
       -optl-mexec-model=reactor
       "-optl-Wl,--export=hs_start"
       "-optl-Wl,--export=hs_selftest"
+      "-optl-Wl,--export=hs_gamecheck"
     cpp-options: -DWASM
     if flag(interactive)
       cpp-options: -DINTERACTIVE
+
+-- | The native bundle step: read @game.yaml@ + @levels/*.rzk.md@ and write the
+-- single @public/game.json@ the wasm app fetches. Native only (uses libyaml via
+-- the @yaml@ package); never built for wasm.
+executable rzk-game-bundle
+  main-is:          Bundle.hs
+  hs-source-dirs:   bundler
+  build-depends:
+      base
+    , aeson
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , text
+    , yaml
+  default-language: Haskell2010
+  ghc-options:      -Wall
+  if arch(wasm32)
+    buildable: False
+
+-- | Native, headless tests for the pure Phase 3 pipeline ('RzkGame.Spec' and
+-- 'RzkGame.Loader'): the level-source splitter, the goal reconstruction, and
+-- that 'buildGame' on a bundle reproduces the built-in 'RzkGame.Content' model.
+test-suite rzk-game-spec
+  type:             exitcode-stdio-1.0
+  main-is:          SpecTest.hs
+  hs-source-dirs:   test
+  build-depends:
+      base
+    , aeson
+    , bytestring
+    , containers
+    , text
+    , rzk-game
+  default-language: Haskell2010
+  ghc-options:      -Wall
+  if arch(wasm32)
+    buildable: False

@@ -22,4 +22,17 @@ const { instance } = await WebAssembly.instantiate(bytes, {
 Object.assign(instance_exports, instance.exports);
 
 wasi.initialize(instance);
+
+// Load the game data (decision D1): fetch the bundled game.json and stash it in
+// localStorage, so the wasm app can read it synchronously at startup (see
+// Main.hs loadGame) and rebuild the sections in-process. On any failure we clear
+// the key, so the app falls back to its built-in content.
+try {
+  localStorage.removeItem("rzk-game-json");
+  const res = await fetch("game.json");
+  if (res.ok) localStorage.setItem("rzk-game-json", await res.text());
+} catch (e) {
+  console.warn("[rzk] no game.json found; using built-in content", e);
+}
+
 await instance.exports.hs_start();
