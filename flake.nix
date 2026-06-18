@@ -34,5 +34,25 @@
             echo "rzk-game wasm dev shell — 'make build' then 'make serve'"
           '';
         };
+
+        # The native (non-wasm) shell for the host-side components: the
+        # rzk-game-bundle bundler and the rzk-game-spec tests, built against
+        # cabal.project.native (which drops the wasm-only miso pin). The bundler
+        # needs a native GHC (it uses the yaml package, which the wasm app
+        # deliberately avoids); GHC 9.6.x matches the local toolchain. Used by the
+        # CI native-checks job:  nix develop .#native --command make test bundle
+        devShells.native = pkgs.mkShell {
+          buildInputs = [
+            pkgs.haskell.compiler.ghc967
+            pkgs.cabal-install
+            pkgs.gnumake
+            pkgs.git          # cabal clones the rzk source-repository-package
+            pkgs.pkg-config
+            pkgs.zlib
+          ];
+          shellHook = ''
+            echo "rzk-game native shell — 'make test' and 'make bundle'"
+          '';
+        };
       });
 }

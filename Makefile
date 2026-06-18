@@ -2,7 +2,7 @@
 # Requires the GHC WASM toolchain on PATH:  source ~/.ghc-wasm/env
 # (install via ghc-wasm-meta, FLAVOUR 9.12).
 
-.PHONY: build bundle optim serve clean test
+.PHONY: all build bundle optim serve clean test
 
 # Set WASM_STORE to a path to use a project-local cabal store (CI caches it).
 WASM_STORE ?=
@@ -12,21 +12,26 @@ STORE := $(if $(WASM_STORE),--store-dir=$(WASM_STORE),)
 GAME ?= game/game.yaml
 GAME_JSON ?= public/game.json
 
-# Compile to wasm, generate the JS FFI glue, assemble public/, and bundle the
-# game data into public/game.json (so the app loads from data, not the built-in
-# fallback). 'bundle' runs last, after static/ is copied into the fresh public/.
+# A complete, playable public/: the wasm engine plus the game data. 'build' and
+# 'bundle' use different toolchains (wasm vs native), so they are kept separate —
+# CI runs them in separate jobs (see .github/workflows/ci.yml). Locally, with
+# both toolchains in scope, `make all` produces the whole bundle.
+all: build bundle
+
+# Compile to wasm, generate the JS FFI glue, and assemble public/. Does not write
+# game.json — run `make bundle` (native) for that, or `make all` for both.
 build:
 	wasm32-wasi-cabal $(STORE) build exe:rzk-game --flags=-lsp
 	rm -rf public && cp -r static public
 	$(eval WASM := $(shell wasm32-wasi-cabal $(STORE) list-bin exe:rzk-game | tail -n1))
 	"$(shell wasm32-wasi-ghc --print-libdir)/post-link.mjs" --input "$(WASM)" --output public/ghc_wasm_jsffi.js
 	cp "$(WASM)" public/app.wasm
-	$(MAKE) bundle
-	@echo "Built public/ — serve with: make serve"
+	@echo "Built public/ — add game.json with: make bundle"
 
-# Native bundle step: convert game.yaml to JSON and inline the referenced level
-# files into a single public/game.json (decision D1). Native-only (uses libyaml);
-# it does not touch the wasm toolchain, so it can also run on its own.
+# Native bundle step: parse game.yaml + level front-matter and inline everything
+# into a single public/game.json (decision D1). Native-only (uses libyaml); it
+# does not touch the wasm toolchain. Writes into an existing public/ (or creates
+# the directory) so it can run after `make build` or on its own.
 bundle:
 	cabal --project-file=cabal.project.native run -v0 exe:rzk-game-bundle -- "$(GAME)" "$(GAME_JSON)"
 

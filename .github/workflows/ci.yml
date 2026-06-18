@@ -1,8 +1,12 @@
 name: CI
 
-# Build the engine to wasm via the nix flake (the same toolchain used for local
-# dev), and deploy the static bundle to GitHub Pages (the gh-pages branch) on
-# push to main. Pull requests build but do not deploy.
+# Two build paths, on two toolchains:
+#   * native-checks — the host-side bundler and the spec/loader tests, built with
+#     a native GHC (flake devShell .#native). Produces public/game.json.
+#   * build-and-deploy — the engine, built to wasm via the flake's default shell.
+#     It pulls in the game.json from native-checks and deploys the combined
+#     static bundle to GitHub Pages (gh-pages) on push to main. PRs build but do
+#     not deploy.
 
 on:
   push:
@@ -16,9 +20,70 @@ permissions:
   contents: write
 
 jobs:
+  # The native pipeline: run the pure spec/loader tests and bundle the game data.
+  # Separate from the wasm build because the bundler is native Haskell (it uses
+  # the yaml package, which the wasm app deliberately avoids); a stock native GHC
+  # also cannot resolve the wasm-only miso pin, so this builds against
+  # cabal.project.native.
+  native-checks:
+    name: Tests + bundle (native)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ❄️ Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+
+      # Cache the realised nix store for the native shell (GHC 9.6, cabal). A
+      # separate key prefix from the wasm store so the two do not evict each
+      # other; it only changes when the flake inputs do.
+      - name: ❄️ Cache the nix store (native toolchain)
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nixnative-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nixnative-${{ runner.os }}-
+
+      # Cache the native cabal store (built rzk + deps), the Hackage index, and
+      # the cloned source-repository-package. Keyed on the files that determine
+      # the native plan.
+      - name: 💾 Cache the native cabal store, index, and SRP clone
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cabal-native
+            dist-newstyle/src
+          key: cabal-native-${{ runner.os }}-${{ hashFiles('cabal.project.native', 'rzk-game.cabal', 'flake.lock') }}
+          restore-keys: |
+            cabal-native-${{ runner.os }}-
+
+      - name: 🧪 Test and bundle (in the native dev shell)
+        # The first run compiles rzk natively from scratch (several minutes); the
+        # caches make later runs fast. Bundle first, then test, so the spec test's
+        # bundle check runs against the freshly written public/game.json.
+        run: |
+          nix develop .#native --command bash -c '
+            export CABAL_DIR="$PWD/.cabal-native" &&
+            cabal --project-file=cabal.project.native update &&
+            make bundle &&
+            make test
+          '
+
+      - name: 📤 Upload the game bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-json
+          path: public/game.json
+          if-no-files-found: error
+
   build-and-deploy:
     name: Build to wasm (nix) and deploy
     runs-on: ubuntu-latest
+    # Wait for the native job so its game.json is available to fold into public/.
+    needs: native-checks
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
@@ -78,6 +143,7 @@ jobs:
         # workspace so the index is cached alongside the store; `cabal update`
         # then refreshes it incrementally. The first run compiles rzk + miso under
         # wasm from scratch (several minutes); the caches make later runs fast.
+        # `make build` assembles public/; game.json is folded in below.
         run: |
           nix develop --command bash -c '
             export CABAL_DIR="$PWD/.cabal-wasm" &&
@@ -85,6 +151,15 @@ jobs:
             make build WASM_STORE="$PWD/.wasm-store" &&
             make optim
           '
+
+      # Fold the bundled game data (from native-checks) into public/, after
+      # `make build` has assembled the fresh directory. Without it the deployed
+      # app would fall back to the built-in content instead of loading the bundle.
+      - name: 📥 Add the game bundle to public/
+        uses: actions/download-artifact@v4
+        with:
+          name: game-json
+          path: public
 
       - name: 🚀 Deploy to GitHub Pages (gh-pages)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
