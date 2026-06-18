@@ -17,15 +17,20 @@ module RzkGame.Level
   , holeActions
   , refineFirstHole
   , renderResult
+  , resultErrorLines
   ) where
 
-import           Data.Char            (isSpace)
+import           Data.Char            (isDigit, isSpace)
 import           Data.List            (nub)
+import           Data.Maybe           (mapMaybe, maybeToList)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
+import           Text.Read            (readMaybe)
 
 import           Language.Rzk.Syntax  (parseModule)
+import           Rzk.Diagnostic       (locationOfTypeError)
 import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
+                                       LocationInfo (..),
                                        OutputDirection (BottomUp),
                                        ppTypeErrorInScopedContext',
                                        typecheckModulesWithHoles)
@@ -45,13 +50,30 @@ data Level = Level
   } deriving (Eq, Show)
 
 -- | The outcome of checking an editable region against a level.
+--
+-- 'ParseError' and 'TypeError' carry, besides the formatted message, the line(s)
+-- to squiggle in the editor — expressed relative to the /editable/ region
+-- (1-based), so the UI can underline them directly. rzk records locations at
+-- line granularity only (the column is discarded, and core terms keep no
+-- per-node position), so a diagnostic points at the enclosing command's line.
+-- An error outside the editable region (in the read-only prelude, or in the
+-- synthetic goal-check appended by 'checkLevel') maps to no line: it is reported
+-- as a message with nothing to underline.
 data CheckResult
-  = NotChecked          -- ^ nothing checked yet
-  | ParseError Text     -- ^ the source did not parse
-  | TypeError Text      -- ^ a genuine type error (not just a hole)
-  | Holes [HoleView]    -- ^ unsolved holes, each with its goal + local context
-  | Solved              -- ^ typechecks with no remaining holes
+  = NotChecked              -- ^ nothing checked yet
+  | ParseError Text (Maybe Int) -- ^ the source did not parse (+ editable line)
+  | TypeError Text [Int]    -- ^ a genuine type error (+ editable lines to squiggle)
+  | Holes [HoleView]        -- ^ unsolved holes, each with its goal + local context
+  | Solved                  -- ^ typechecks with no remaining holes
   deriving (Eq, Show)
+
+-- | The editable-region line(s) a result wants squiggled (empty when there is
+-- nothing to underline). Consumed by the editor overlay.
+resultErrorLines :: CheckResult -> [Int]
+resultErrorLines = \case
+  ParseError _ ml -> maybeToList ml
+  TypeError _ ls  -> ls
+  _               -> []
 
 -- | A single hole with every part pre-rendered to display text, so the UI can
 -- lay it out as panels (goal / context / cube variables / topes) without
@@ -90,6 +112,16 @@ toHoleView HoleInfo{..} = HoleView
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
+-- | Best-effort line number from a parse error message. rzk's parser formats its
+-- errors as @"syntax error at line L column C …"@ (and layout errors likewise),
+-- so we read the first number after @"line "@. The column is present in the text
+-- but not used: the editor squiggles whole lines (see 'CheckResult').
+parseErrorLine :: Text -> Maybe Int
+parseErrorLine msg =
+  let after  = T.drop 5 (snd (T.breakOn "line " msg))  -- text past "line "
+      digits = T.takeWhile isDigit (T.dropWhile (not . isDigit) after)
+  in if T.null digits then Nothing else readMaybe (T.unpack digits)
+
 -- | Check an editable region against a level. The prelude is prepended, so the
 -- player's text is checked in the context of the given definitions.
 --
@@ -110,7 +142,7 @@ checkLevel lvl editable =
                     <> "\n  := " <> levelGoalName lvl
       src = levelPrelude lvl <> "\n" <> editable <> goalCheck
   in case parseModule src of
-       Left err -> ParseError err
+       Left err -> ParseError err (toEditableLine =<< parseErrorLine err)
        Right m  ->
          case typecheckModulesWithHoles [("level", m)] of
            -- A fatal error short-circuits to 'Left'; recoverable type errors
@@ -118,13 +150,31 @@ checkLevel lvl editable =
            -- middle field. Both must be reported — only the holes-aware
            -- elaboration records unsolved holes separately. A real type error
            -- takes priority over any holes the partial term still has.
-           Left err -> TypeError (ppErr err)
-           Right (_, err : _, _) -> TypeError (ppErr err)
+           Left err -> TypeError (ppErr err) (errorLines err)
+           Right (_, err : _, _) -> TypeError (ppErr err) (errorLines err)
            Right (_, [], holes)
              | null holes -> Solved
              | otherwise  -> Holes (map toHoleView holes)
   where
     ppErr = T.pack . ppTypeErrorInScopedContext' BottomUp
+
+    -- The editable region is concatenated after the prelude and a separating
+    -- newline, so its first character sits this many lines into 'src' (1-based).
+    editableStart = T.count "\n" (levelPrelude lvl) + 2
+    editableSpan  = T.count "\n" editable + 1
+
+    -- Map an absolute 'src' line to a 1-based line within the editable region,
+    -- dropping lines that fall in the prelude or the synthetic goal-check.
+    toEditableLine :: Int -> Maybe Int
+    toEditableLine l =
+      let r = l - editableStart + 1
+      in if r >= 1 && r <= editableSpan then Just r else Nothing
+
+    -- A type error's line, mapped into the editable region (empty when it has no
+    -- recorded location, or the location is outside the editable region).
+    errorLines err =
+      mapMaybe toEditableLine
+        (maybeToList (locationLine =<< locationOfTypeError err))
 
 -- | Tap-to-refine: replace the first hole (@?@) in the text with the given
 -- insertion. This is how a tap turns into an edit — the engine re-checks the
@@ -206,12 +256,17 @@ humanize = T.replace "π₁" "first" . T.replace "π₂" "second"
 -- | A plain-text rendering of a result, for self-tests and logs.
 renderResult :: CheckResult -> Text
 renderResult = \case
-  NotChecked   -> "(not checked)"
-  ParseError e -> "Parse error:\n" <> e
-  TypeError e  -> "Type error:\n" <> e
-  Holes hs     -> tshow (length hs) <> " hole(s):\n\n"
-                    <> T.intercalate "\n" (map renderHoleView hs)
-  Solved       -> "Solved: no holes, typechecks."
+  NotChecked      -> "(not checked)"
+  ParseError e ml -> "Parse error" <> atLine (maybeToList ml) <> ":\n" <> e
+  TypeError e ls  -> "Type error" <> atLine ls <> ":\n" <> e
+  Holes hs        -> tshow (length hs) <> " hole(s):\n\n"
+                       <> T.intercalate "\n" (map renderHoleView hs)
+  Solved          -> "Solved: no holes, typechecks."
+  where
+    -- A " (at line N)" / " (at lines N, M)" suffix for the self-test/log output.
+    atLine []  = ""
+    atLine [l] = " (at line " <> tshow l <> ")"
+    atLine ls  = " (at lines " <> T.intercalate ", " (map tshow ls) <> ")"
 
 -- | A plain-text rendering of a single hole, mirroring rzk's @ppHoleInfo@ for
 -- the self-tests and logs.
