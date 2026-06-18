@@ -1,4 +1,14 @@
-# The identity morphism
+---
+id: my-id
+title: "The identity morphism"
+statement: "hom A x x"
+inventory:
+  - "x        : A"
+  - "id-hom   : (A : U) → (x : A) → hom A x x"
+  - "λ-intro  : introduce the interval coordinate"
+---
+
+A morphism $x \to y$ in $A$ is a path along the directed interval $\Delta^1$. The simplest one is the identity: the morphism from $x$ to itself that just stays put. Both endpoints of the path are $x$, so a constant path will do. Build it.
 
 ```rzk prelude
 #lang rzk-1
@@ -23,3 +33,7 @@
   : hom A x x
   := \ t → x
 ```
+
+## Conclusion
+
+The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all.
