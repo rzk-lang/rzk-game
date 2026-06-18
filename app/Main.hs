@@ -19,13 +19,13 @@ import qualified Miso.Html          as H
 import qualified Miso.Html.Property as P
 import qualified Miso.Svg           as S
 import qualified Miso.Svg.Property  as SP
-import           Miso.DSL           (jsg2)
+import           Miso.DSL           (jsg0, jsg2)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
 import           Control.Exception  (SomeException, evaluate, try)
 import           Data.IORef         (IORef, newIORef, readIORef, writeIORef)
-import           Data.List          (find)
+import           Data.List          (find, sort)
 import           Data.Map.Strict    (Map)
 import qualified Data.Map.Strict    as Map
 import           Data.Maybe         (fromMaybe, mapMaybe)
@@ -48,6 +48,7 @@ import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
                                      tokClassName)
 import           RzkGame.Level
 import           RzkGame.Loader     (buildGame)
+import           RzkGame.Save       (decodeArchive, encodeArchive)
 import           RzkGame.Section
 
 -- | Inject rendered prose (Markdown/TeX via @prose.js@) into a div miso has just
@@ -129,6 +130,8 @@ data Model = Model
   , _unlocked :: Set T.Text               -- ^ "Unlock anyway" overrides, by id
   , _history  :: [MisoString]             -- ^ prior editable states, for Undo
   , _mapOpen  :: Bool                      -- ^ whether the full level map is shown
+  , _confirmReset :: Bool                  -- ^ whether the reset confirmation is showing
+  , _importMsg :: Maybe (Either T.Text Int) -- ^ last import result: error, or count restored
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -157,6 +160,12 @@ history = lens _history $ \m v -> m { _history = v }
 
 mapOpen :: Lens Model Bool
 mapOpen = lens _mapOpen $ \m v -> m { _mapOpen = v }
+
+confirmReset :: Lens Model Bool
+confirmReset = lens _confirmReset $ \m v -> m { _confirmReset = v }
+
+importMsg :: Lens Model (Maybe (Either T.Text Int))
+importMsg = lens _importMsg $ \m v -> m { _importMsg = v }
 
 -- | The slot currently being shown.
 currentSlot :: Model -> Slot
@@ -193,11 +202,19 @@ data Action
   | SetPretest T.Text PretestAnswer  -- ^ record a pre-test self-assessment
   | Unlock T.Text              -- ^ override a lock ("Unlock anyway"), by puzzle id
   | InitProse MisoString DOMRef  -- ^ inject prose into a just-created div
+  | ExportProgress             -- ^ gather player-data keys → archive JSON → download
+  | ImportProgress             -- ^ open a file picker; the file is applied at reload
+  | ResetProgress              -- ^ ask to confirm erasing all progress
+  | ConfirmReset               -- ^ confirmed: clear all player-data keys and re-init
+  | CancelReset                -- ^ dismiss the reset confirmation
+  | SetImportMsg (Maybe (Either T.Text Int))  -- ^ show the result of an applied import
+  | DismissImportMsg           -- ^ dismiss the import result banner
   -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
 main = do
   loadGame                            -- install the loaded game (or keep fallback)
+  applyPendingImport                  -- apply a just-imported archive before the app reads state
   _ <- evaluate (length loadedSections)  -- force the navigation CAFs now, after load
 #ifdef INTERACTIVE
   live defaultEvents app
@@ -207,9 +224,10 @@ main = do
 
 #ifdef WASM
 #ifndef INTERACTIVE
-foreign export javascript "hs_start"     main        :: IO ()
-foreign export javascript "hs_selftest"  hsSelftest  :: IO ()
-foreign export javascript "hs_gamecheck" hsGameCheck :: IO ()
+foreign export javascript "hs_start"        main            :: IO ()
+foreign export javascript "hs_selftest"     hsSelftest      :: IO ()
+foreign export javascript "hs_gamecheck"    hsGameCheck     :: IO ()
+foreign export javascript "hs_progresscheck" hsProgressCheck :: IO ()
 
 -- | Headless proof that the /loaded/ game (from @game.json@) works in wasm: read
 -- the stashed bundle, build the sections in-process, and play the first level
@@ -234,6 +252,52 @@ hsGameCheck = do
           solves = checkLevel lvl (levelSolution lvl) == Solved
       putStrLn ("first level: " <> T.unpack (levelTitle lvl))
       putStrLn (if holes && solves then "loaded-play: OK" else "LOADED-PLAY FAILED")
+
+-- | Headless proof of the export/import round-trip in wasm, against the same
+-- @localStorage@ shim @loadtest.mjs@ uses (driven by @progresscheck.mjs@). Seed
+-- some progress, export it to an archive string, clear, import it back through
+-- the real 'applyPendingImport', and assert the keys are restored; then check a
+-- wrong-version archive is rejected and changes nothing.
+hsProgressCheck :: IO ()
+hsProgressCheck = do
+  -- Seed a representative slice of player data.
+  setLocalStorage progressKey  "0,2,5"
+  setLocalStorage viewedKey    "morphisms-intro,functions-intro"
+  setLocalStorage pretestKey   "map-point=familiar"
+  setLocalStorage (draftKey 0) "#def my-id (A : U) (x : A)\n  : hom A x x\n  := ?"
+  before <- gatherProgress
+  let archive = encodeArchive before
+  putStrLn ("seeded keys: " <> show (length before))
+
+  -- Clear everything, then import the archive through the real startup path.
+  clearPlayerData
+  cleared <- gatherProgress
+  setLocalStorage importScratchKey (ms archive)
+  writeIORef importResultRef Nothing
+  applyPendingImport
+  after <- gatherProgress
+  res   <- readIORef importResultRef
+  scratchGone <- getLocalStorage importScratchKey
+  let restoredOk = sort after == sort before
+      countOk    = res == Just (Right (length before))
+      clearedOk  = null cleared
+      consumedOk = scratchGone == Nothing
+  putStrLn ("after clear: " <> show (length cleared)
+            <> ", after import: " <> show (length after)
+            <> ", result: " <> show res)
+  putStrLn (if restoredOk && countOk && clearedOk && consumedOk
+              then "progress roundtrip: OK" else "PROGRESS ROUNDTRIP FAILED")
+
+  -- A wrong-version archive is rejected and leaves the restored state untouched.
+  setLocalStorage importScratchKey "{\"version\": 2, \"saved\": {\"rzk-game-progress\": \"9\"}}"
+  writeIORef importResultRef Nothing
+  applyPendingImport
+  res2  <- readIORef importResultRef
+  prog  <- getLocalStorage progressKey
+  let rejectedOk = case res2 of Just (Left _) -> True; _ -> False
+      untouched  = prog == Just "0,2,5"
+  putStrLn (if rejectedOk && untouched
+              then "bad-version rejected: OK" else "BAD-VERSION REJECT FAILED")
 
 -- | Headless proof that the engine runs in wasm: for every level, check the
 -- starting template (holes) and the reference solution (solved); then exercise
@@ -449,7 +513,7 @@ app = (component initModel updateModel viewModel)
 
 initModel :: Model
 initModel = enterSlotPure 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False)
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False Nothing)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -548,6 +612,78 @@ loadDraftAction :: Int -> IO Action
 loadDraftAction i =
   ApplyText i . fromMaybe (ms (levelTemplate (nthLevel i))) <$> getLocalStorage (draftKey i)
 
+-- Progress export / import / reset ------------------------------------------
+
+-- | All the @localStorage@ keys that make up the player's progress: the four
+-- fixed keys plus one draft per puzzle. The engine's loaded @game.json@ bundle
+-- (under 'gameJsonKey') is deliberately excluded — it is content, regenerated at
+-- load, not player data.
+playerDataKeys :: [MisoString]
+playerDataKeys =
+  [progressKey, viewedKey, pretestKey, unlockedKey]
+    ++ [ draftKey i | i <- [0 .. length gameLevels - 1] ]
+
+-- | Whether a key from an imported archive is player data we will restore. The
+-- four fixed keys, plus any per-level draft (accepted even for an index beyond
+-- the current game, matching how a stale draft is otherwise tolerated).
+isPlayerDataKey :: T.Text -> Bool
+isPlayerDataKey k =
+  k `elem` map fromMisoString [progressKey, viewedKey, pretestKey, unlockedKey]
+    || "rzk-game-draft-" `T.isPrefixOf` k
+
+-- | The scratch key @download.js@ stashes a chosen import file under, read once
+-- at startup by 'applyPendingImport'.
+importScratchKey :: MisoString
+importScratchKey = "rzk-game-import"
+
+-- | Read every present player-data key, as @(key, value)@ text pairs.
+gatherProgress :: IO [(T.Text, T.Text)]
+gatherProgress = do
+  vals <- mapM getLocalStorage playerDataKeys
+  pure [ (fromMisoString k, fromMisoString v)
+       | (k, Just v) <- zip playerDataKeys vals ]
+
+-- | Remove every player-data key, leaving the loaded game bundle in place.
+clearPlayerData :: IO ()
+clearPlayerData = mapM_ removeLocalStorage playerDataKeys
+
+-- | Gather the progress and hand it to @download.js@ as one archive file. Called
+-- through the DSL's 'jsg2' (like 'renderProseInto') to avoid the @JSString@-arg
+-- codegen bug.
+exportProgress :: IO ()
+exportProgress = do
+  pairs <- gatherProgress
+  _ <- jsg2 "download" ("rzk-game-progress.json" :: MisoString) (ms (encodeArchive pairs))
+  pure ()
+
+-- | Result of the last applied import, set by 'applyPendingImport' before the
+-- app starts and read once at 'Init': @Left@ an error message, or @Right@ the
+-- number of keys restored.
+{-# NOINLINE importResultRef #-}
+importResultRef :: IORef (Maybe (Either T.Text Int))
+importResultRef = unsafePerformIO (newIORef Nothing)
+
+-- | If @download.js@ stashed an import file (then reloaded), validate it with the
+-- pure 'decodeArchive' and apply it: replace the player-data keys with the
+-- archive's (a full replace, not a merge — so progress not in the archive is
+-- cleared), then record the outcome for 'Init' to surface. A malformed or
+-- wrong-version archive is rejected with its message and changes nothing. The
+-- scratch key is always consumed, so an import is applied at most once.
+applyPendingImport :: IO ()
+applyPendingImport = do
+  mraw <- getLocalStorage importScratchKey
+  case mraw of
+    Nothing  -> pure ()
+    Just raw -> do
+      removeLocalStorage importScratchKey
+      case decodeArchive (fromMisoString raw) of
+        Left err  -> writeIORef importResultRef (Just (Left err))
+        Right kvs -> do
+          let keep = [ (k, v) | (k, v) <- kvs, isPlayerDataKey k ]
+          clearPlayerData
+          mapM_ (\(k, v) -> setLocalStorage (ms k) (ms v)) keep
+          writeIORef importResultRef (Just (Right (length keep)))
+
 
 updateModel :: Action -> Effect parent props Model Action
 updateModel = \case
@@ -583,6 +719,7 @@ updateModel = \case
     io_ (removeDraft ix)     -- drop the draft so the template stays on next load
   Init -> do
     io (LoadState <$> readProgress <*> readViewed <*> readPretest <*> readUnlocked)
+    io (SetImportMsg <$> readIORef importResultRef)  -- show an applied import's result
     mix <- currentPuzzleIx
     case mix of
       Just ix -> io (loadDraftAction ix)  -- a puzzle slot 0: restore its draft
@@ -639,6 +776,21 @@ updateModel = \case
     let res = checkLevel (nthLevel ix) (fromMisoString e)
     result .= res
     recordSolved ix res
+  ExportProgress -> io_ exportProgress
+  ImportProgress -> io_ (jsg0 "pickImport" >> pure ())  -- picks a file, then reloads
+  ResetProgress  -> confirmReset .= True
+  CancelReset    -> confirmReset .= False
+  ConfirmReset   -> do
+    io_ clearPlayerData
+    solved   .= Set.empty
+    viewed   .= Set.empty
+    pretest  .= Map.empty
+    unlocked .= Set.empty
+    history  .= []
+    confirmReset .= False
+    io (pure (SelectSlot 0))   -- back to the start; re-seeds the editor and viewed
+  SetImportMsg v   -> importMsg .= v
+  DismissImportMsg -> importMsg .= Nothing
   where
     -- The current slot's global puzzle index, if it is a puzzle.
     currentPuzzleIx = do
@@ -673,12 +825,29 @@ viewModel _ m =
             [ text "An interactive Rzk proof game — fill the holes." ]
         ]
     , navHeader m
+    , importBanner m
     , H.section_ [ P.class_ "level" ]
         ( case currentSlot m of
             SlotProse  sid p    -> proseSlotView  m sid p
             SlotPuzzle sid ix z -> puzzleSlotView m sid ix z
         )
     ]
+
+-- | A dismissible banner reporting the result of an import applied at the last
+-- reload (see 'applyPendingImport'): how many items were restored, or why the
+-- archive was rejected.
+importBanner :: Model -> View Model Action
+importBanner m = case m ^. importMsg of
+  Nothing -> text ""
+  Just r  -> H.div_ [ P.class_ (ms ("import-msg " <> cls :: T.Text)) ]
+    [ H.span_ [] [ text (ms msg) ]
+    , H.button_ [ P.class_ "import-dismiss", H.onClick DismissImportMsg
+                , P.title_ "Dismiss" ] [ text "✕" ]
+    ]
+    where
+      (cls, msg) = case r of
+        Right n -> ("ok",  "Progress imported — " <> tshow n <> " item(s) restored.")
+        Left e  -> ("err", "Import failed: " <> e)
 
 -- | A thin, sticky bar that keeps the level content in focus: it shows where the
 -- player is and the overall progress, with a toggle that reveals the full level
@@ -710,7 +879,8 @@ sectionTitleOf sid = maybe "" sectionTitle (find ((== sid) . sectionId) gameSect
 -- free — every slot is always reachable; locking only affects a puzzle page.
 levelMap :: Model -> View Model Action
 levelMap m =
-  H.div_ [ P.class_ "sections" ] (map sectionBlock gameSections)
+  H.div_ [ P.class_ "sections" ]
+    (map sectionBlock gameSections ++ [ progressControls m ])
   where
     indexed = zip [0 ..] slots
     sectionBlock sec =
@@ -727,6 +897,28 @@ levelMap m =
            ]
     countCls :: Int -> Int -> T.Text
     countCls d t = "section-count" <> if d == t && t > 0 then " done" else ""
+
+-- | Export / import / reset controls, at the foot of the level map. Export and
+-- import move the whole progress archive between devices or back it up; reset
+-- erases it, behind an in-place confirmation so a stray tap cannot wipe progress.
+progressControls :: Model -> View Model Action
+progressControls m =
+  H.div_ [ P.class_ "progress-controls" ]
+    [ H.button_ [ P.class_ "prog-btn", H.onClick ExportProgress ]
+        [ text "⇩ Export progress" ]
+    , H.button_ [ P.class_ "prog-btn", H.onClick ImportProgress ]
+        [ text "⇧ Import progress" ]
+    , if m ^. confirmReset
+        then H.span_ [ P.class_ "reset-confirm" ]
+               [ text "Erase all progress?"
+               , H.button_ [ P.class_ "prog-btn danger", H.onClick ConfirmReset ]
+                   [ text "Yes, reset" ]
+               , H.button_ [ P.class_ "prog-btn", H.onClick CancelReset ]
+                   [ text "Cancel" ]
+               ]
+        else H.button_ [ P.class_ "prog-btn danger", H.onClick ResetProgress ]
+               [ text "⟲ Reset progress" ]
+    ]
 
 -- | One slot tile: a compact rounded square whose icon names the item's role
 -- (prose, ordinary puzzle, pre-test, or a starred extra), with the puzzle's
