@@ -918,7 +918,7 @@ advanceView m
       case nextIncomplete m of
         Just j  -> H.div_ [ P.class_ "advance" ]
                      [ H.button_ [ H.onClick (SelectSlot j) ]
-                         [ text "Next →" ] ]
+                         [ text (ms ("Next: " <> slotLabel (slotAt j))) ] ]
         Nothing -> H.div_ [ P.class_ "advance" ]
                      [ H.p_ [ P.class_ "all-done" ]
                          [ text "🏆 You've finished every activity. The end — for now!" ] ]
@@ -942,17 +942,21 @@ nextIncomplete m = find incomplete order
 navBar :: Model -> View Model Action
 navBar m =
   H.div_ [ P.class_ "nav" ]
-    [ navButton "← Previous" (cur - 1) (cur > 0)
+    [ navButton "prev" "← Previous: " (cur - 1) (cur > 0)
     , H.span_ [ P.class_ "nav-current" ]
-        [ text (ms ("Step " <> tshow (cur + 1) <> " / " <> tshow totalSlots
-                      <> " — " <> slotLabel (currentSlot m))) ]
-    , navButton "Next →" (cur + 1) (cur < totalSlots - 1)
+        [ text (ms ("Step " <> tshow (cur + 1) <> " / " <> tshow totalSlots)) ]
+    , navButton "next" "Next: " (cur + 1) (cur < totalSlots - 1)
     ]
   where
     cur = _slotIx m
-    navButton lbl j enabled =
-      H.button_ ( [ H.onClick (SelectSlot j) ] <> [ P.disabled_ | not enabled ] )
-        [ text lbl ]
+    -- When a neighbour exists, name it; at an end, fall back to a plain label.
+    navButton dir prefix j enabled =
+      H.button_ ( [ P.class_ (ms ("nav-" <> dir :: T.Text))
+                  , H.onClick (SelectSlot j) ]
+                    <> [ P.disabled_ | not enabled ] )
+        [ text (ms (if enabled
+                      then prefix <> slotLabel (slotAt j)
+                      else if dir == "prev" then "← Previous" else "Next →")) ]
 
 -- | A short human label for a slot, for the nav bar.
 slotLabel :: Slot -> T.Text
