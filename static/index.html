@@ -125,9 +125,14 @@
            gap: .5rem; margin: 1.2rem 0 .3rem; padding-top: .6rem;
            border-top: 1px solid #eee; }
     .nav-current { font-weight: 600; color: #444; text-align: center;
-                   flex: 1; }
+                   flex: 0 0 auto; white-space: nowrap; }
+    /* Prev/next name their target; cap their width and ellipsize long titles so
+       the footer never overflows. */
     .nav button { margin: 0; background: #fff; border: 1px solid #ccc;
-                  border-radius: 6px; cursor: pointer; }
+                  border-radius: 6px; cursor: pointer; flex: 0 1 auto;
+                  max-width: 38%; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; }
+    .nav-next { text-align: right; }
     .nav button:not(:disabled):hover { border-color: #999; }
     .nav button:disabled { color: #bbb; cursor: default; border-color: #eee; }
     /* Two-part move button: a colour-coded kind chip + a syntax-highlighted
