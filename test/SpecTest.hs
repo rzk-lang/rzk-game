@@ -57,21 +57,22 @@ main = do
     (levelProse sampleBody
        == ("Some intro prose, ignored by the splitter.", "That was the conclusion."))
 
-  -- 3. buildGame round-trips the built-in Morphisms section: synthesize a bundle
-  --    from it, decode it, and require an exact match. The goal name/type and the
-  --    intro/conclusion are recovered, not stored, so this pins the readers too.
-  putStrLn "== buildGame: the Morphisms section round-trips through a JSON bundle =="
-  let morphisms = head gameSections
-  case buildGame (BL.toStrict (encode (bundleFor "Round-trip" [morphisms]))) of
+  -- 3. buildGame round-trips the whole built-in game: synthesize a bundle from
+  --    every section, decode it, and require an exact match. The goal name/type
+  --    and the intro/conclusion are recovered, not stored, so this pins the
+  --    readers across all 15 levels (the associativity ones have display blocks
+  --    in their intros and long stacked preludes).
+  putStrLn "== buildGame: the whole game round-trips through a JSON bundle =="
+  case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameSections))) of
     Left err   -> check ("buildGame error: " <> T.unpack err) False
     Right secs -> do
-      check "round-trips to one section" (length secs == 1)
-      check "section equals RzkGame.Content morphisms" (secs == [morphisms])
+      check "round-trips to all sections" (length secs == length gameSections)
+      check "sections equal RzkGame.Content" (secs == gameSections)
 
   -- 4. Every loaded level actually plays: its template has holes, its reference
   --    solution solves. This runs the real rzk type-checker on the loaded model.
-  putStrLn "== play: each loaded Morphisms level holes on its template and solves =="
-  case buildGame (BL.toStrict (encode (bundleFor "Play" [head gameSections]))) of
+  putStrLn "== play: every loaded level holes on its template and solves =="
+  case buildGame (BL.toStrict (encode (bundleFor "Play" gameSections))) of
     Left err   -> check ("buildGame error: " <> T.unpack err) False
     Right secs -> flip mapM_ (loadedLevels secs) $ \lvl -> do
       check (T.unpack (levelTitle lvl) <> ": template holes")
@@ -80,20 +81,15 @@ main = do
             (checkLevel lvl (levelSolution lvl) == Solved)
 
   -- 5. The authored game/ files, as bundled by `make bundle`, reproduce the
-  --    built-in Morphisms section exactly. Skipped when public/game.json is
-  --    absent (so `cabal test` runs standalone before a bundle has been built).
-  putStrLn "== bundle: the authored game/ files reproduce Morphisms (run `make bundle` first) =="
+  --    built-in game exactly. Skipped when public/game.json is absent (so
+  --    `cabal test` runs standalone before a bundle has been built).
+  putStrLn "== bundle: the authored game/ files reproduce RzkGame.Content (run `make bundle` first) =="
   ejson <- try (BS.readFile "public/game.json") :: IO (Either SomeException BS.ByteString)
   case ejson of
     Left _     -> putStrLn "skip - public/game.json not found (run `make bundle`)"
     Right json -> case buildGame json of
       Left err   -> check ("buildGame on public/game.json: " <> T.unpack err) False
-      Right secs -> do
-        check "first bundled section equals Content morphisms"
-              (not (null secs) && head secs == head gameSections)
-        flip mapM_ (loadedLevels (take 1 secs)) $ \lvl ->
-          check (T.unpack (levelTitle lvl) <> ": bundled solution solves")
-                (checkLevel lvl (levelSolution lvl) == Solved)
+      Right secs -> check "bundled sections equal RzkGame.Content" (secs == gameSections)
 
   n <- readIORef failed
   if n == 0
@@ -165,10 +161,19 @@ sectionV s = object
 itemV :: SectionItem -> Value
 itemV (SProse p)  = object [ "prose"  .= object [ "file" .= refPath (SProse p) ] ]
 itemV (SPuzzle z) = object [ "puzzle" .= object
-  [ "file"    .= refPath (SPuzzle z)
-  , "role"    .= roleWord (puzzleRole z)
-  , "prereqs" .= puzzlePrereqs z
-  ] ]
+  ( [ "file"    .= refPath (SPuzzle z)
+    , "role"    .= roleWord (puzzleRole z)
+    , "prereqs" .= puzzlePrereqs z
+    ]
+    <> [ "remedies" .= map remedyV (puzzleRemedy z) | not (null (puzzleRemedy z)) ] ) ]
+
+remedyV :: Remedy -> Value
+remedyV (Remedy lbl tgt) = object (("label" .= lbl) : target)
+  where
+    target = case tgt of
+      ToSection s  -> [ "section" .= s ]
+      ToLevel l    -> [ "level"   .= l ]
+      ToExternal u -> [ "url"     .= u ]
 
 -- | The inlined file for an item: its front-matter @meta@ and its @body@.
 fileV :: SectionItem -> Value
