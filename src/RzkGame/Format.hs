@@ -11,6 +11,7 @@
 -- 'RzkGame.Save'.
 module RzkGame.Format
   ( formatEditable
+  , formatFixpoint
   , isWellFormatted
   ) where
 
@@ -19,6 +20,17 @@ import qualified Data.Text           as T
 
 import           Language.Rzk.Syntax (parseModule)
 import           Rzk.Format          (format, isWellFormatted)
+
+-- | Format to a fixpoint. rzk's 'format' is not idempotent on every input — it
+-- stabilises some forms (e.g. a cube product like @(2 × 2)@, where it inserts
+-- the inner space only on a second pass) after one more pass. We iterate until
+-- the text stops changing so the result is genuinely 'isWellFormatted', with a
+-- small cap so a pathological oscillation cannot hang the caller.
+formatFixpoint :: Text -> Text
+formatFixpoint = go (10 :: Int)
+  where
+    go 0 x = x
+    go n x = let y = format x in if y == x then x else go (n - 1) y
 
 -- | Format the editable region of a level on demand.
 --
@@ -33,7 +45,7 @@ import           Rzk.Format          (format, isWellFormatted)
 -- corrupting rewrite.
 formatEditable :: Text -> Text
 formatEditable src
-  | parses    = format src
+  | parses    = formatFixpoint src
   | otherwise = src
   where
     probe  = if "#lang" `T.isInfixOf` src then src else "#lang rzk-1\n" <> src

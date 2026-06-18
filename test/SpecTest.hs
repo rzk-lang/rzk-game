@@ -136,6 +136,15 @@ main = do
   check "a non-parsing fragment is returned unchanged"
     (formatEditable broken == broken)
 
+  -- 8. Authoring guard: every built-in level's prelude is well-formatted, so the
+  --    read-only region the player reads matches rzk's own canonical layout. The
+  --    preludes are formatted in the source (RzkGame.Content) and in the bundled
+  --    game/ files; test 5 above already pins that the two agree.
+  putStrLn "== RzkGame.Format: every built-in prelude is well-formatted =="
+  flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(n, lvl) ->
+    check ("level " <> show n <> " (" <> T.unpack (levelTitle lvl) <> ") prelude")
+          (isWellFormatted (levelPrelude lvl))
+
   n <- readIORef failed
   if n == 0
     then putStrLn "\nAll Phase 3 spec/loader tests passed."
