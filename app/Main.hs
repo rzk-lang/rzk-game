@@ -33,20 +33,19 @@ import           RzkGame.Content    (apHomLevel, composeLevel,
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 
--- | Render a level's intro and conclusion prose (Markdown/TeX via @prose.js@)
--- and inject them into the always-present @#prose-intro@ / @#prose-concl@ divs.
+-- | Inject rendered prose (Markdown/TeX via @prose.js@) into a div miso has just
+-- created, given its 'DOMRef' from an @onCreatedWith@ hook.
 --
--- The injected DOM lives entirely outside miso's virtual DOM: those divs are
--- rendered empty and never carry an @innerHTML@ attribute, so miso never diffs
--- their content. Setting it imperatively here therefore cannot desync miso's
--- diff (an earlier version injected via a vdom @innerHTML@ prop, which crashed
--- with a stale-DOM-ref @removeChild@ when the result panel restructured on a
--- solve). We call through the DSL's @jsg2@ rather than a raw @foreign import@
--- because marshalling a @JSString@ argument directly trips a wasm codegen bug.
-renderProseIO :: Int -> IO ()
-renderProseIO i = do
-  let lvl = nthLevel i
-  _ <- jsg2 "setProse" (ms (levelIntro lvl)) (ms (levelConclusion lvl))
+-- The injected DOM lives entirely outside miso's virtual DOM: the div is an
+-- empty leaf as far as miso is concerned, so writing its content here cannot
+-- desync the diff (an earlier version injected via a vdom @innerHTML@ prop, which
+-- crashed with a stale-DOM-ref @removeChild@ when the result panel restructured
+-- on a solve). We call through the DSL's @jsg2@ rather than a raw @foreign
+-- import@ because marshalling a @JSString@ argument directly trips a wasm codegen
+-- bug.
+renderProseInto :: DOMRef -> MisoString -> IO ()
+renderProseInto ref src = do
+  _ <- jsg2 "renderInto" ref src
   pure ()
 
 -- | UI state: which level is being played, the player's current text, the last
@@ -94,7 +93,8 @@ data Action
   | Init                    -- ^ dispatched at mount: load saved progress + draft
   | SetSolved (Set Int)
   | ApplyText Int MisoString  -- ^ install a level's restored draft (or template)
-  deriving (Eq)
+  | InitProse MisoString DOMRef  -- ^ inject prose into a just-created div (onCreatedWith)
+  -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
 #ifdef INTERACTIVE
@@ -282,7 +282,6 @@ updateModel = \case
     history .= []            -- each level keeps its own, fresh undo history
     reload i
     io (loadDraftAction i)   -- override the template with a saved draft, if any
-    io_ (renderProseIO i)    -- render this level's prose into the stable divs
   Reset         -> do
     i <- use levelIx
     e <- use editable
@@ -293,8 +292,8 @@ updateModel = \case
     io (SetSolved <$> readProgress)
     i <- use levelIx
     io (loadDraftAction i)
-    io_ (renderProseIO i)
   SetSolved s   -> solved .= s
+  InitProse src ref -> io_ (renderProseInto ref src)
   ApplyText i s -> do
     -- Ignore a draft that arrived after the player moved to another level.
     cur <- use levelIx
@@ -361,8 +360,12 @@ viewModel _ m =
         [ levelPicker m
 
         , H.h2_ [] [ text (ms (titleMark <> levelTitle lvl)) ]
-        -- Prose is injected by id (see renderProseIO); miso keeps this div empty.
-        , H.div_ [ P.id_ "prose-intro", P.class_ "prose" ] []
+        -- Prose is injected on creation (see InitProse); miso keeps this div an
+        -- empty leaf. Keyed by level so the hook re-fires when the level changes.
+        , H.div_ [ P.class_ "prose"
+                 , key_ (ms ("intro-" <> show (_levelIx m)))
+                 , onCreatedWith (InitProse (ms (levelIntro lvl)))
+                 ] []
 
         , H.h3_ [] [ text "Goal" ]
         , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
@@ -567,7 +570,11 @@ resultView = \case
 -- injected by id in 'renderProseIO'), so it is never created or destroyed during
 -- a result swap — it is simply revealed once the level is solved.
 conclusionView :: Model -> View Model Action
-conclusionView m = H.div_ [ P.id_ "prose-concl", P.class_ (ms cls) ] []
+conclusionView m =
+  H.div_ [ P.class_ (ms cls)
+         , key_ (ms ("concl-" <> show (_levelIx m)))
+         , onCreatedWith (InitProse (ms (levelConclusion (currentLevel m))))
+         ] []
   where
     cls :: T.Text
     cls = case m ^. result of
