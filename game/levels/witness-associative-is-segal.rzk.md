@@ -5,6 +5,7 @@ inventory:
 - 'is-segal-arr A is-segal-A : arr A is Segal (taken as given)'
 - 'arr-in-arr-is-segal … w x y f g : the (f,g) composition arrow'
 - 'arr-in-arr-is-segal … x y z g h : the (g,h) composition arrow'
+- 'arr A    : the arrow type Δ¹ → A, worked in here'
 statement: hom2 (arr A) f g h …
 title: Composing the witnesses
 ---

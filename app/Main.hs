@@ -899,10 +899,13 @@ updateModel = \case
         Nothing -> pure ()
 
     -- On a solved puzzle, record it and persist the updated set. We only write to
-    -- storage when the set actually changes, to avoid redundant re-checks.
+    -- storage when the set actually changes, to avoid redundant re-checks. A
+    -- gated level whose proof uses ungranted lemmas does not count as solved,
+    -- even when it type-checks — the gate notice surfaces the blocker.
     recordSolved i Solved = do
+      e <- use editable
       s <- use solved
-      if Set.member i s
+      if Set.member i s || not (gatePassed (nthLevel i) (fromMisoString e))
         then pure ()
         else do
           let s' = Set.insert i s
@@ -1153,7 +1156,7 @@ puzzleSlotView m sid ix z =
   , preludeView lvl
   ]
   <> body
-  <> [ advanceView m, navBar m ]
+  <> [ advanceView m solvedAccepted, navBar m ]
   where
     lvl       = puzzleLevel z
     locked    = levelLocked slots (m ^. solved) (m ^. unlocked) (m ^. pretest) z
@@ -1162,6 +1165,12 @@ puzzleSlotView m sid ix z =
       Extra   -> " ★"
       PreTest -> " — pre-test"
       Core    -> ""
+    -- Inventory gating, computed in the engine. 'gate' is the prelude lemmas used
+    -- but not granted; on a 'levelGated' level a violation withholds the solve
+    -- (so the green box and the success cues stay hidden until the proof uses
+    -- only granted moves), while a non-gated level only ever shows a soft notice.
+    gate           = inventoryViolations lvl (fromMisoString (m ^. editable))
+    solvedAccepted = m ^. result == Solved && gatePassed lvl (fromMisoString (m ^. editable))
     body
       | locked    = [ lockPanel m z ]
       | otherwise =
@@ -1170,6 +1179,7 @@ puzzleSlotView m sid ix z =
              , editorView (m ^. editable) (resultErrorLines (m ^. result))
              , H.h3_ [] [ text "Moves" ]
              , movesView m
+             , inventoryView lvl
              , H.div_ [ P.class_ "buttons" ]
                  [ H.button_ [ P.class_ "primary", H.onClick Check ] [ text "Check" ]
                  , H.button_ [ P.class_ "secondary", H.onClick Format ] [ text "Format" ]
@@ -1183,9 +1193,14 @@ puzzleSlotView m sid ix z =
                             , H.onChecked (\(Checked b) -> SetFormatOnCheck b) ]
                  , text " Format on check" ]
              , H.h3_ [] [ text "Result" ]
-             , resultView (m ^. result)
+             -- A gated solve that uses ungranted lemmas is withheld: the red
+             -- gate box replaces the green success box; otherwise the result
+             -- shows normally, with any gate notice below it.
+             , if m ^. result == Solved && not (null gate) && levelGated lvl
+                 then text "" else resultView (m ^. result)
+             , gateView lvl (m ^. result) gate
              , hintsView m lvl
-             , conclusionView m lvl
+             , conclusionView m lvl solvedAccepted
              ]
 
 -- | The self-assessment for a pre-test puzzle: two buttons, the current choice
@@ -1366,6 +1381,41 @@ moveButton kind ins =
       Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
       Give  -> ("give",            "kind-give")
 
+-- | The collapsible "Allowed here" list: the lemmas and moves the level grants,
+-- the visible reference for the inventory gate. Reuses 'levelInventory' (the
+-- per-entry display strings) and is hidden on a level with an empty inventory.
+inventoryView :: Level -> View Model Action
+inventoryView lvl
+  | null (levelInventory lvl) = text ""
+  | otherwise =
+      H.details_ [ P.class_ "inventory-wrap" ]
+        [ H.summary_ [] [ text (ms summary) ]
+        , H.ul_ [ P.class_ "inventory" ]
+            [ H.li_ [] [ text (ms e) ] | e <- levelInventory lvl ]
+        ]
+  where
+    summary :: T.Text
+    summary = if levelGated lvl then "Allowed here (gated)" else "Allowed here"
+
+-- | The inventory-gate notice: the prelude lemmas used but not granted. On a
+-- gated level it is a blocking red box (the proof does not count until they are
+-- gone); otherwise a soft amber heads-up. Empty when there are no violations.
+gateView :: Level -> CheckResult -> [T.Text] -> View Model Action
+gateView lvl res violations
+  | null violations = text ""
+  | levelGated lvl  =
+      H.div_ [ P.class_ "gate gate-hard" ]
+        [ H.p_ [] [ text (ms (hardMsg <> names)) ] ]
+  | otherwise =
+      H.div_ [ P.class_ "gate gate-soft" ]
+        [ H.p_ [] [ text (ms ("Heads up — this level does not list " <> names
+                      <> " under “Allowed here”. It still counts; see if you can do without it.")) ] ]
+  where
+    names = T.intercalate ", " violations
+    hardMsg = case res of
+      Solved -> "🔒 So close — but this level grants only the moves under “Allowed here”, and your proof uses "
+      _      -> "🔒 Not allowed here — this level grants only the moves under “Allowed here”, not "
+
 -- | The focused hole's rendered goal, if the proof currently has holes. This is
 -- what a hint's @when-goal@ trigger is matched against.
 focusedGoal :: CheckResult -> Maybe T.Text
@@ -1413,9 +1463,9 @@ hintsView m lvl
 -- | When the level is solved, offer a step onward: the next /incomplete/ slot
 -- (an unviewed prose or an unsolved required puzzle), searching forward and
 -- wrapping past the end. A closing line shows once everything is done.
-advanceView :: Model -> View Model Action
-advanceView m
-  | Solved <- m ^. result =
+advanceView :: Model -> Bool -> View Model Action
+advanceView m accepted
+  | accepted =
       case nextIncomplete m of
         Just j  -> H.div_ [ P.class_ "advance" ]
                      [ H.button_ [ H.onClick (SelectSlot j) ]
@@ -1488,17 +1538,15 @@ resultView = \case
 
 -- | The level conclusion prose. The div is keyed by slot, so it is recreated on
 -- navigation (and the prose re-injected); it is revealed once the level solves.
-conclusionView :: Model -> Level -> View Model Action
-conclusionView m lvl =
+conclusionView :: Model -> Level -> Bool -> View Model Action
+conclusionView m lvl accepted =
   H.div_ [ P.class_ (ms cls)
          , key_ (ms ("concl-" <> show (_slotIx m)))
          , onCreatedWith (InitProse (ms (levelConclusion lvl)))
          ] []
   where
     cls :: T.Text
-    cls = case m ^. result of
-      Solved -> "prose concl shown"
-      _      -> "prose concl hidden"
+    cls = if accepted then "prose concl shown" else "prose concl hidden"
 
 -- | Render one hole as a stack of labelled panels: goal, then any local
 -- hypotheses, cube variables, and tope assumptions.

@@ -200,6 +200,34 @@ main = do
   check "plainHintCount counts only the untriggered hints"
     (plainHintCount sample == 1)
 
+  -- 10. Inventory gating: no built-in level's reference solution trips its own
+  --     gate (the caveat guard — a level's granted inventory covers what its
+  --     solution uses), an ungranted prelude lemma is flagged, the type formers
+  --     in a goal signature are not, and the gated level both passes on its
+  --     solution and blocks an ungranted shortcut.
+  putStrLn "== inventoryViolations: solutions scan clean; ungranted lemmas are flagged =="
+  flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(k, lvl) ->
+    check ("level " <> show k <> " (" <> T.unpack (levelTitle lvl) <> ") solution is clean")
+          (null (inventoryViolations lvl (levelSolution lvl)))
+  let ws = head [ l | l <- gameLevels, levelTitle l == "The composition square" ]
+      ungranted = T.unlines
+        [ "#def witness-square-comp-is-segal"
+        , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+        , "  (f : hom A x y) (g : hom A y z)"
+        , "  : Δ¹×Δ¹ → A"
+        , "  := \\ (t , s) → comp-is-segal A is-segal-A x y z f g t" ]
+  check "an ungranted prelude lemma in the body is flagged"
+    (inventoryViolations ws ungranted == ["comp-is-segal"])
+  check "type formers in the goal signature are not flagged"
+    (null (inventoryViolations ws (levelTemplate ws)))
+  check "the gated level is actually gated" (levelGated ws)
+  check "gatePassed holds on the gated level's clean solution"
+    (gatePassed ws (levelSolution ws))
+  check "gatePassed fails on a gated proof that uses an ungranted lemma"
+    (not (gatePassed ws ungranted))
+  check "a non-gated level never fails the gate"
+    (gatePassed (head gameLevels) "#def x := whatever-undefined-thing")
+
   n <- readIORef failed
   if n == 0
     then putStrLn "\nAll Phase 3 spec/loader tests passed."
@@ -296,7 +324,8 @@ fileV (SPuzzle z) = object
   [ "meta" .= object
       ( [ "id" .= puzzleId z, "title" .= levelTitle lvl
         , "statement" .= levelStatement lvl, "inventory" .= levelInventory lvl ]
-        <> [ "hints" .= map hintV (levelHints lvl) | not (null (levelHints lvl)) ] )
+        <> [ "hints" .= map hintV (levelHints lvl) | not (null (levelHints lvl)) ]
+        <> [ "gated" .= True | levelGated lvl ] )
   , "body" .= levelBody lvl
   ]
   where lvl = puzzleLevel z
