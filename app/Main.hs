@@ -24,6 +24,7 @@ import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
 import           Control.Exception  (SomeException, evaluate, try)
+import           Data.IORef         (IORef, newIORef, readIORef, writeIORef)
 import           Data.List          (find)
 import           Data.Map.Strict    (Map)
 import qualified Data.Map.Strict    as Map
@@ -31,11 +32,13 @@ import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
+import           Data.Text.Encoding (encodeUtf8)
+import           System.IO.Unsafe   (unsafePerformIO)
 import           Text.Read          (readMaybe)
 
+import qualified RzkGame.Content    as Content
 import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      composeWitnessLevel, constTriangleLevel,
-                                     gameLevels, gameSections, gameSlots,
                                      hom2Level, homLeftUnitLevel, idMorphismLevel,
                                      idArrLevel, mapPointLevel,
                                      tetrahedronLevel, tripleCompLevel,
@@ -44,6 +47,7 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
 import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
                                      tokClassName)
 import           RzkGame.Level
+import           RzkGame.Loader     (buildGame)
 import           RzkGame.Section
 
 -- | Inject rendered prose (Markdown/TeX via @prose.js@) into a div miso has just
@@ -60,6 +64,50 @@ renderProseInto :: DOMRef -> MisoString -> IO ()
 renderProseInto ref src = do
   _ <- jsg2 "renderInto" ref src
   pure ()
+
+-- | The game the app plays: the sections loaded from @game.json@ at startup, or
+-- the built-in 'Content.gameSections' as a fallback. The bytes are fetched in JS
+-- (see @index.js@) into @localStorage@ before @hs_start@, then 'loadGame' reads
+-- them, runs 'buildGame', and writes the result into 'loadedSectionsRef' — which
+-- 'main' forces before 'startApp', so the pure navigation values below see the
+-- loaded game. The ref starts at the fallback, so a build with no @game.json@ (or
+-- a malformed one) plays the built-in content unchanged.
+{-# NOINLINE loadedSectionsRef #-}
+loadedSectionsRef :: IORef [Section]
+loadedSectionsRef = unsafePerformIO (newIORef Content.gameSections)
+
+{-# NOINLINE loadedSections #-}
+loadedSections :: [Section]
+loadedSections = unsafePerformIO (readIORef loadedSectionsRef)
+
+-- | @localStorage@ key under which @index.js@ stashes the fetched @game.json@.
+gameJsonKey :: MisoString
+gameJsonKey = "rzk-game-json"
+
+-- | Read the stashed @game.json@, build the sections, and install them. Any
+-- failure (no bundle, malformed JSON, empty game) leaves the built-in fallback
+-- in place. Called once at the very start of 'main', before 'loadedSections' is
+-- forced.
+loadGame :: IO ()
+loadGame = do
+  mjson <- getLocalStorage gameJsonKey
+  case mjson of
+    Just s
+      | let t = fromMisoString s, not (T.null t)
+      , Right secs <- buildGame (encodeUtf8 t)
+      , not (null secs) -> writeIORef loadedSectionsRef secs
+    _ -> pure ()
+
+-- | The game's sections, levels, and flattened navigation, all derived from the
+-- loaded game (see 'loadedSections').
+gameSections :: [Section]
+gameSections = loadedSections
+
+gameSlots :: [Slot]
+gameSlots = slotsOfSections loadedSections
+
+gameLevels :: [Level]
+gameLevels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems loadedSections ]
 
 -- | The navigation sequence and the sections, named once.
 slots :: [Slot]
@@ -148,16 +196,44 @@ data Action
   -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
+main = do
+  loadGame                            -- install the loaded game (or keep fallback)
+  _ <- evaluate (length loadedSections)  -- force the navigation CAFs now, after load
 #ifdef INTERACTIVE
-main = live defaultEvents app
+  live defaultEvents app
 #else
-main = startApp defaultEvents app
+  startApp defaultEvents app
 #endif
 
 #ifdef WASM
 #ifndef INTERACTIVE
-foreign export javascript "hs_start"    main       :: IO ()
-foreign export javascript "hs_selftest" hsSelftest :: IO ()
+foreign export javascript "hs_start"     main        :: IO ()
+foreign export javascript "hs_selftest"  hsSelftest  :: IO ()
+foreign export javascript "hs_gamecheck" hsGameCheck :: IO ()
+
+-- | Headless proof that the /loaded/ game (from @game.json@) works in wasm: read
+-- the stashed bundle, build the sections in-process, and play the first level
+-- (its template holes, its reference solution solves) through the real rzk
+-- type-checker. Driven by @loadtest.mjs@, which stubs @localStorage@ with the
+-- bundle. This exercises the wasm path that the native @rzk-game-spec@ test
+-- cannot: 'getLocalStorage' → 'buildGame' → 'checkLevel'.
+hsGameCheck :: IO ()
+hsGameCheck = do
+  loadGame
+  let secs = loadedSections
+      lvls = gameLevels
+  putStrLn ("loaded sections: " <> show (length secs))
+  mapM_ (\s -> putStrLn ("  section: " <> T.unpack (sectionTitle s)
+                           <> " (" <> T.unpack (sectionId s) <> "), "
+                           <> show (length (sectionItems s)) <> " items")) secs
+  putStrLn ("loaded levels: " <> show (length lvls))
+  case lvls of
+    [] -> putStrLn "LOADED-PLAY FAILED (no levels)"
+    (lvl : _) -> do
+      let holes  = case checkLevel lvl (levelTemplate lvl) of Holes _ -> True; _ -> False
+          solves = checkLevel lvl (levelSolution lvl) == Solved
+      putStrLn ("first level: " <> T.unpack (levelTitle lvl))
+      putStrLn (if holes && solves then "loaded-play: OK" else "LOADED-PLAY FAILED")
 
 -- | Headless proof that the engine runs in wasm: for every level, check the
 -- starting template (holes) and the reference solution (solved); then exercise
@@ -165,6 +241,12 @@ foreign export javascript "hs_selftest" hsSelftest :: IO ()
 -- and the section/locking/progress logic.
 hsSelftest :: IO ()
 hsSelftest = do
+  -- The self-test exercises the full built-in game (15 levels, fixed ids and
+  -- order), independent of whatever game.json a build happens to load. Shadow the
+  -- loaded-game navigation values with the Content ones for the rest of the test.
+  let gameLevels   = Content.gameLevels
+      gameSections = Content.gameSections
+      slots        = Content.gameSlots
   flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(n, lvl) -> do
     putStrLn ("== level " <> show n <> " template (expect holes) ==")
     putStrLn (T.unpack (renderResult (checkLevel lvl (levelTemplate lvl))))
