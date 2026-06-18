@@ -1,0 +1,61 @@
+# DRAFT (WIP) — a GitHub Action that builds a playable Rzk-game site from a game
+# repo's data, with no Haskell toolchain in the consumer repo. A downstream repo
+# (e.g. yoneda-game) would use it as:
+#
+#   - uses: rzk-lang/rzk-game/rzk-game-action@v1   # likely its own repo later
+#     with:
+#       game: game/game.yaml
+#   - uses: peaceiris/actions-gh-pages@v4
+#     with: { publish_dir: ./public }
+#
+# It fetches the pinned rzk-game release (engine + bundler), runs the bundler over
+# the repo's game/, and assembles ./public. See README.md for the open decisions.
+name: "Rzk Game"
+description: "Bundle a Rzk game's data and assemble the playable static site (engine + game.json)."
+author: "rzk-lang"
+branding:
+  icon: "play"
+  color: "purple"
+
+inputs:
+  game:
+    description: "Path to the game.yaml table of contents."
+    required: false
+    default: "game/game.yaml"
+  output-dir:
+    description: "Directory to assemble the static site into."
+    required: false
+    default: "public"
+  engine-version:
+    description: "Which rzk-game release to fetch the engine and bundler from (a tag, e.g. v0.1.0, or 'latest')."
+    required: false
+    default: "latest"
+
+outputs:
+  site:
+    description: "The assembled static site directory."
+    value: ${{ inputs.output-dir }}
+
+runs:
+  using: "composite"
+  steps:
+    # TODO: pin by digest / verify checksums once releases exist.
+    - name: Fetch the rzk-game release (engine + bundler)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        tag='${{ inputs.engine-version }}'
+        args=(); [ "$tag" = latest ] || args=("$tag")
+        gh release download "${args[@]}" --repo rzk-lang/rzk-game \
+          --pattern 'rzk-game-engine.tar.gz' \
+          --pattern 'rzk-game-bundle-linux-x64' --dir "$RUNNER_TEMP/rzk-game"
+        chmod +x "$RUNNER_TEMP/rzk-game/rzk-game-bundle-linux-x64"
+
+    - name: Assemble the static site
+      shell: bash
+      run: |
+        out='${{ inputs.output-dir }}'
+        mkdir -p "$out"
+        tar xzf "$RUNNER_TEMP/rzk-game/rzk-game-engine.tar.gz" -C "$out"
+        "$RUNNER_TEMP/rzk-game/rzk-game-bundle-linux-x64" '${{ inputs.game }}' "$out/game.json"
