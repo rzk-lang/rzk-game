@@ -82,9 +82,13 @@ jobs:
           if-no-files-found: error
 
   # The bundler: the native rzk-game-bundle executable, the only native piece the
-  # action needs. Built in the same native shell CI uses. This is a
-  # dynamically-linked glibc binary; it runs on GitHub-hosted ubuntu runners,
-  # which is the supported target for the action.
+  # action needs downstream. Built with a stock ghcup GHC (not the nix shell CI
+  # uses) on purpose: a nix-built binary records a /nix/store ELF interpreter that
+  # does not exist on a vanilla runner, so it cannot execute in a consumer repo.
+  # A ghcup build uses the standard interpreter and links only the system glibc
+  # libraries present on GitHub-hosted ubuntu runners, so the artifact runs there.
+  # The bundler has no rzk dependency (only aeson/yaml/…), so this build does not
+  # compile rzk — it is fast and needs no nix.
   bundler:
     name: Build bundler (native, linux-x64)
     runs-on: ubuntu-latest
@@ -92,36 +96,37 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: ❄️ Install Nix
-        uses: nixbuild/nix-quick-install-action@v30
+      - name: 🎩 Set up GHC and cabal (ghcup)
+        uses: haskell-actions/setup@v2
         with:
-          nix_conf: |
-            experimental-features = nix-command flakes
+          ghc-version: '9.6.7'
+          cabal-version: '3.12'
 
-      - name: ❄️ Cache the nix store (native toolchain)
-        uses: nix-community/cache-nix-action@v6
-        with:
-          primary-key: nixnative-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nixnative-${{ runner.os }}-
-
-      - name: 💾 Cache the native cabal store, index, and SRP clone
+      - name: 💾 Cache the cabal store, index, and build outputs
         uses: actions/cache@v4
         with:
+          # ~/.cabal/store — compiled deps; ~/.cabal/packages — the Hackage
+          # index; dist-newstyle — the local build outputs and the cloned rzk
+          # source-repository-package (so the ~40 s clone is skipped on a hit).
           path: |
-            .cabal-native
-            dist-newstyle/src
-          key: cabal-native-${{ runner.os }}-${{ hashFiles('cabal.project.native', 'rzk-game.cabal', 'flake.lock') }}
+            ~/.cabal/store
+            ~/.cabal/packages
+            dist-newstyle
+          key: bundler-cabal-${{ runner.os }}-ghc9.6.7-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
           restore-keys: |
-            cabal-native-${{ runner.os }}-
+            bundler-cabal-${{ runner.os }}-ghc9.6.7-
+            bundler-cabal-${{ runner.os }}-
 
-      - name: 🔨 Build the bundler (in the native dev shell)
+      - name: 🔨 Build the bundler
         run: |
-          nix develop .#native --command bash -c '
-            export CABAL_DIR="$PWD/.cabal-native" &&
-            cabal --project-file=cabal.project.native update &&
-            cabal --project-file=cabal.project.native build exe:rzk-game-bundle &&
-            cp "$(cabal --project-file=cabal.project.native list-bin exe:rzk-game-bundle)" rzk-game-bundle-linux-x64
-          '
+          cabal --project-file=cabal.project.native update
+          cabal --project-file=cabal.project.native build exe:rzk-game-bundle
+          cp "$(cabal --project-file=cabal.project.native list-bin exe:rzk-game-bundle)" rzk-game-bundle-linux-x64
+
+      - name: 🔎 Confirm the binary is portable (standard interpreter)
+        run: |
+          file rzk-game-bundle-linux-x64
+          ldd  rzk-game-bundle-linux-x64 || true
 
       - name: 📤 Upload the bundler artifact
         uses: actions/upload-artifact@v4
