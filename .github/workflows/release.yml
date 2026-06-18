@@ -97,25 +97,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🎩 Set up GHC and cabal (ghcup)
+        id: setup
         uses: haskell-actions/setup@v2
         with:
           ghc-version: '9.6.7'
           cabal-version: '3.12'
 
-      - name: 💾 Cache the cabal store, index, and build outputs
+      - name: 💾 Cache the cabal store and build outputs
         uses: actions/cache@v4
         with:
-          # ~/.cabal/store — compiled deps; ~/.cabal/packages — the Hackage
-          # index; dist-newstyle — the local build outputs and the cloned rzk
-          # source-repository-package (so the ~40 s clone is skipped on a hit).
+          # Cache the store at the path haskell-actions/setup reports — cabal 3.12
+          # places it under an XDG dir, not ~/.cabal, so guessing the path (or
+          # forcing CABAL_DIR) left the compiled deps uncached and every run
+          # recompiled. dist-newstyle holds the local build and the cloned rzk
+          # source-repository-package. ci.yml's release-bundler job warms this same
+          # key on main (tag-scoped caches are not shared between tags, but main's
+          # are visible to all refs), so a release restores it.
           path: |
-            ~/.cabal/store
-            ~/.cabal/packages
+            ${{ steps.setup.outputs.cabal-store }}
             dist-newstyle
-          key: bundler-cabal-${{ runner.os }}-ghc9.6.7-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
+          key: bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
           restore-keys: |
-            bundler-cabal-${{ runner.os }}-ghc9.6.7-
-            bundler-cabal-${{ runner.os }}-
+            bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-
 
       - name: 🔨 Build the bundler
         run: |
