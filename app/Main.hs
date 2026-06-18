@@ -36,9 +36,10 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      composeWitnessLevel, constTriangleLevel,
                                      gameLevels, gameSections, gameSlots,
                                      hom2Level, homLeftUnitLevel, idMorphismLevel,
-                                     mapPointLevel, tetrahedronLevel,
-                                     tripleCompLevel, unfoldingSquareLevel,
-                                     witnessAssocLevel, witnessSquareLevel)
+                                     idArrLevel, mapPointLevel,
+                                     tetrahedronLevel, tripleCompLevel,
+                                     unfoldingSquareLevel, witnessAssocLevel,
+                                     witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, tokClassName)
 import           RzkGame.Level
 import           RzkGame.Section
@@ -241,6 +242,9 @@ hsSelftest = do
   putStrLn "== witness-square: give the composition witness (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain witnessSquareLevel ["witness-comp-is-segal A is-segal-A x y z f g"])))
+  putStrLn "== id-arr-in-arr: return f at its coordinate s (expect Solved) =="
+  putStrLn (T.unpack (renderResult
+    (tapChain idArrLevel ["f s"])))
   putStrLn "== arr-in-arr: apply the square at (t , s) (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain arrInArrLevel ["witness-square-comp-is-segal A is-segal-A x y z f g (t , s)"])))
@@ -294,7 +298,8 @@ hsSelftest = do
       orderOk    = puzzleIds == ["my-id", "const-triangle", "rut", "lut"
                                 , "map-point", "ap-hom", "compose", "compose-witness"
                                 , "unfolding-square", "witness-square-comp-is-segal"
-                                , "arr-in-arr-is-segal", "witness-associative-is-segal"
+                                , "id-arr-in-arr", "arr-in-arr-is-segal"
+                                , "witness-associative-is-segal"
                                 , "tetrahedron-associative-is-segal", "triple-comp-is-segal"]
       derivedOk  = map levelTitle [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections ]
                      == map levelTitle gameLevels

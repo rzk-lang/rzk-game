@@ -20,6 +20,7 @@ module RzkGame.Content
   , composeWitnessLevel
   , unfoldingSquareLevel
   , witnessSquareLevel
+  , idArrLevel
   , arrInArrLevel
   , witnessAssocLevel
   , tetrahedronLevel
@@ -35,7 +36,7 @@ import           RzkGame.Section
 -- | The levels, in play order, easiest first, derived from 'gameSections'. The
 -- global order is @[my-id, const-triangle, rut, lut, map-point, ap-hom, compose,
 -- compose-witness, unfolding-square, witness-square-comp-is-segal,
--- arr-in-arr-is-segal, witness-associative-is-segal,
+-- id-arr-in-arr, arr-in-arr-is-segal, witness-associative-is-segal,
 -- tetrahedron-associative-is-segal, triple-comp-is-segal]@; preserve the prefix,
 -- since progress and drafts are keyed by this index (see the handoff note). New
 -- levels are appended, so the existing indices are untouched.
@@ -80,6 +81,7 @@ gameSections =
       , SPuzzle (core "unfolding-square" unfoldingSquareLevel)
       , SPuzzle ((core "witness-square-comp-is-segal" witnessSquareLevel)
                    { puzzlePrereqs = ["compose-witness"] })
+      , SPuzzle (core "id-arr-in-arr" idArrLevel)
       , SPuzzle ((core "arr-in-arr-is-segal" arrInArrLevel)
                    { puzzlePrereqs = ["compose-witness"] })
       , SProse  proseArrIsSegalNote
@@ -637,21 +639,56 @@ witnessSquareLevel = Level
       , "is-segal-A x y z f g  : the centre of contraction for f, g"
       ]
   , levelConclusion =
-      "The composition witness is now a square. Its left and right edges are $f$ and $g$; its other two edges are the composite. Seen sideways, this square is an arrow whose endpoints are $f$ and $g$ — which is what the next level makes precise."
+      "The composition witness is now a square. Its left and right edges are $f$ and $g$; its other two edges are the composite. Seen sideways, this square is an arrow whose endpoints are $f$ and $g$. The arrow type makes that precise — and the next two levels put it to work."
+  }
+
+-- | A gentle warm-up in the arrow type, isolating the two new ideas before they
+-- meet the composition square: the type @arr A@ (whose points are arrows) and
+-- the curried @\ t s →@ binder. The simplest arrow between arrows is the
+-- identity at an arrow @f@ — the constant path that never leaves @f@. Solution:
+-- ignore the path coordinate @t@ and return @f@ at its own coordinate @s@.
+idArrLevel :: Level
+idArrLevel = Level
+  { levelTitle     = "An identity between arrows"
+  , levelIntro     =
+      "A new kind of target: the **arrow type** $\\mathsf{arr}\\,A = \\Delta^1 \\to A$, whose points are the arrows of $A$. A morphism *between* two arrows, $\\mathsf{hom}\\,(\\mathsf{arr}\\,A)\\,f\\,g$, is a path of arrows, and it takes two coordinates — the first, $t$, slides between arrows; the second, $s$, runs along the arrow sitting there. Start with the simplest one: the **identity** at $f$, the constant path that never leaves $f$. Ignore the path coordinate $t$ and return $f$ at its own coordinate $s$."
+  , levelStatement = "hom (arr A) f f"
+  , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel]
+  , levelTemplate  = T.unlines
+      [ "#def id-arr-in-arr (A : U) (f : arr A)"
+      , "  : hom (arr A) f f"
+      , "  := \\ t s → ?"
+      ]
+  , levelSolution  = T.unlines
+      [ "#def id-arr-in-arr (A : U) (f : arr A)"
+      , "  : hom (arr A) f f"
+      , "  := \\ t s → f s"
+      ]
+  , levelGoalName  = "id-arr-in-arr"
+  , levelGoalType  = "(A : U) → (f : arr A) → hom (arr A) f f"
+  , levelInventory =
+      [ "f        : arr A   (an arrow of A)"
+      , "f s      : A       the arrow f at its own coordinate s"
+      , "λ-intro  : two coordinates — t between arrows, s along the arrow"
+      ]
+  , levelConclusion =
+      "The identity between arrows ignores the path coordinate $t$ and hands back the arrow $f$ unchanged. The two coordinates have clear roles: $t$ moves between arrows, $s$ runs along the arrow at hand. In the next level $t$ genuinely moves."
   }
 
 -- | The composition square, read as an arrow in the arrow type. Currying the
 -- square @Δ¹×Δ¹ → A@ in its first coordinate gives a map @Δ¹ → (Δ¹ → A)@, i.e.
 -- an arrow in @arr A@ whose endpoints are @f@ and @g@. This is the key change of
--- viewpoint that makes composition in @A@ into composition in @arr A@. Solution:
--- curry the square, @\ t s → witness-square … (t , s)@.
+-- viewpoint that makes composition in @A@ into composition in @arr A@. It is the
+-- same curried @\ t s →@ as the identity warm-up, but with the constant arrow
+-- replaced by the moving composition square. Solution: @\ t s → witness-square …
+-- (t , s)@.
 arrInArrLevel :: Level
 arrInArrLevel = Level
   { levelTitle     = "An arrow between arrows"
   , levelIntro     =
-      "Here is the pivot of the whole proof. An arrow in the arrow type $\\mathsf{arr}\\,A$ is a morphism whose endpoints are themselves arrows. Curry the composition square: feed it the two coordinates one at a time, and it becomes a path from $f$ to $g$ in $\\mathsf{arr}\\,A$. Introduce the two coordinates and apply the square."
+      "Now the real thing. The warm-up built the *constant* path of arrows; here the arrow genuinely moves. Use the composition square: as the first coordinate $t$ slides from $0$ to $1$, the arrow slides from $f$ to $g$. Curry it exactly as before — introduce $t$ and $s$, then read off the square at $(t , s)$. This is the pivot of the whole proof: composition in $A$ becomes an arrow in $\\mathsf{arr}\\,A$."
   , levelStatement = "hom (arr A) f g"
-  , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel]
+  , levelPrelude   = assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel, idArrLevel]
   , levelTemplate  = T.unlines
       [ "#def arr-in-arr-is-segal"
       , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
@@ -673,7 +710,7 @@ arrInArrLevel = Level
   , levelInventory =
       [ "witness-square-comp-is-segal : the composition square Δ¹×Δ¹ → A"
       , "f , g    : the endpoints, now points of arr A"
-      , "λ-intro  : introduce the two square coordinates t and s"
+      , "λ-intro  : t slides from f to g; s runs along the arrow at (t , s)"
       ]
   , levelConclusion =
       "Composition in $A$ is now an arrow in $\\mathsf{arr}\\,A$. Because the arrow type of a Segal type is again Segal, these arrows can themselves be composed — and that second-order composition is what makes associativity fall out."
@@ -692,8 +729,8 @@ witnessAssocLevel = Level
   , levelIntro     =
       "The two composition arrows — one for $(f,g)$, one for $(g,h)$ — are composable arrows in $\\mathsf{arr}\\,A$. Since the arrow type is itself Segal (we take this as given; see the section note), they have a composition witness: a triangle `hom2 (arr A)` whose hypotenuse is their composite. Build it the same way as before, but one level up: apply `witness-comp-is-segal` in the arrow type to the two `arr-in-arr-is-segal` arrows."
   , levelStatement = "hom2 (arr A) f g h …"
-  , levelPrelude   =
-      assocPreludeFor [unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel]
+  , levelPrelude   = assocPreludeFor
+      [unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel]
   , levelTemplate  = T.unlines
       [ "#def witness-associative-is-segal"
       , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
@@ -752,7 +789,8 @@ tetrahedronLevel = Level
       "The triangle of arrows, uncurried, is a prism $\\Delta^2\\times\\Delta^1 \\to A$. The $3$-simplex $\\Delta^3$ embeds in that prism by the *middle-simplex* map $((t,s),r) \\mapsto ((t,r),s)$ — swap the inner coordinate $s$ with the outer one $r$. Introduce the three coordinates of $\\Delta^3$, then apply the witness with them regrouped this way."
   , levelStatement = "Δ³ → A"
   , levelPrelude   = assocPreludeFor
-      [unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel, witnessAssocLevel]
+      [ unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel
+      , witnessAssocLevel ]
   , levelTemplate  = T.unlines
       [ "#def tetrahedron-associative-is-segal"
       , "  (A : U) (is-segal-A : is-segal A) (w x y z : A)"
@@ -792,7 +830,7 @@ tripleCompLevel = Level
       "One arrow is left to read off. The tetrahedron's main diagonal runs from its first vertex $w$ to its last vertex $z$, traced by the fully degenerate point $((t,t),t)$. That diagonal *is* the composite $h\\circ g\\circ f$ of all three arrows. Introduce the interval coordinate and restrict the tetrahedron to its main diagonal."
   , levelStatement = "hom A w z"
   , levelPrelude   = assocPreludeFor
-      [ unfoldingSquareLevel, witnessSquareLevel, arrInArrLevel
+      [ unfoldingSquareLevel, witnessSquareLevel, idArrLevel, arrInArrLevel
       , witnessAssocLevel, tetrahedronLevel ]
   , levelTemplate  = T.unlines
       [ "#def triple-comp-is-segal"
