@@ -10,6 +10,11 @@
 -- the wasm shim can fall back to the built-in 'RzkGame.Content' on any error.
 -- Nothing downstream of the produced @['Section']@ changes: flattening, locking,
 -- progress, and the whole UI are reused verbatim.
+--
+-- Each item joins two sources: the /placement/ metadata from the table of
+-- contents (the curriculum role, prerequisites, remedies) and the /intrinsic/
+-- metadata and prose from the referenced level file (its front-matter 'Meta' and
+-- its body).
 module RzkGame.Loader
   ( buildGame
   ) where
@@ -28,66 +33,67 @@ import           RzkGame.Spec
 
 -- | Decode a @game.json@ bundle and assemble the sections. The bundle is the
 -- JSON @{ "config": …, "files": … }@ produced by the native bundle step (see
--- 'Bundle'): the config is the @game.yaml@ as JSON, and the files map carries
--- every referenced @.rzk.md@ source inlined by path. We resolve each puzzle's
--- @file@ against that map, split it into prelude/template/solution, recover the
--- goal from the template, and fill the prose fields from the config.
+-- 'Bundle'): the config is the @game.yaml@ table of contents as JSON, and the
+-- files map carries every referenced level file — front-matter parsed, body kept
+-- — inlined by path. We resolve each item's @file@ against that map, read its
+-- metadata and prose, split the puzzle body into prelude/template/solution,
+-- recover the goal from the template, and add the placement metadata.
 buildGame :: ByteString -> Either Text [Section]
 buildGame bs = do
   bundle <- first (("game.json: " <>) . T.pack) (eitherDecodeStrict' bs)
   traverse (sectionFrom (bundleFiles bundle)) (gsSections (bundleConfig bundle))
 
-sectionFrom :: Map Text Text -> SectionSpec -> Either Text Section
+sectionFrom :: Map Text FileSpec -> SectionSpec -> Either Text Section
 sectionFrom files s = do
   items <- traverse (itemFrom files) (ssItems s)
   pure (Section (ssId s) (ssTitle s) items)
 
-itemFrom :: Map Text Text -> ItemSpec -> Either Text SectionItem
+itemFrom :: Map Text FileSpec -> ItemSpec -> Either Text SectionItem
 itemFrom files = \case
-  ItemProse  p -> SProse  <$> proseFrom files p
-  ItemPuzzle p -> SPuzzle <$> puzzleFrom files p
+  ItemProse  ref -> SProse  <$> proseFrom files ref
+  ItemPuzzle ref -> SPuzzle <$> puzzleFrom files ref
 
-proseFrom :: Map Text Text -> ProseSpec -> Either Text Prose
-proseFrom files p = do
-  txt <- case (psText p, psFile p) of
-    (Just t, _)        -> Right t
-    (Nothing, Just f)  -> resolve files f
-    (Nothing, Nothing) ->
-      Left ("prose `" <> psId p <> "` has neither `text` nor `file`")
+proseFrom :: Map Text FileSpec -> ProseRef -> Either Text Prose
+proseFrom files ref = do
+  f <- resolve files (prFile ref)
+  let m = fileMeta f
   pure Prose
-    { proseId    = psId p
-    , proseTitle = psTitle p
-    , proseRole  = psRole p >>= parseBoppps
-    , proseText  = txt
+    { proseId    = metaId m
+    , proseTitle = metaTitle m
+    , proseRole  = metaRole m >>= parseBoppps
+    , proseText  = T.strip (fileBody f)
     }
 
-puzzleFrom :: Map Text Text -> PuzzleSpec -> Either Text PuzzleItem
-puzzleFrom files p = do
-  src                            <- resolve files (pzFile p)
-  (prelude, template, solution)  <- splitLevelSource src
-  (goalName, goalType)           <- goalFromTemplate template
-  let lvl = Level
-        { levelTitle      = pzTitle p
-        , levelIntro      = pzIntro p
-        , levelStatement  = pzStatement p
+puzzleFrom :: Map Text FileSpec -> PuzzleRef -> Either Text PuzzleItem
+puzzleFrom files ref = do
+  f <- resolve files (puFile ref)
+  let m    = fileMeta f
+      body = fileBody f
+  (prelude, template, solution) <- splitLevelSource body
+  (goalName, goalType)          <- goalFromTemplate template
+  let (intro, conclusion) = levelProse body
+      lvl = Level
+        { levelTitle      = metaTitle m
+        , levelIntro      = intro
+        , levelStatement  = metaStatement m
         , levelPrelude    = prelude
         , levelTemplate   = template
         , levelSolution   = solution
         , levelGoalName   = goalName
         , levelGoalType   = goalType
-        , levelInventory  = pzInventory p
-        , levelConclusion = pzConclusion p
+        , levelInventory  = metaInventory m
+        , levelConclusion = conclusion
         }
   pure PuzzleItem
     { puzzleLevel   = lvl
-    , puzzleId      = pzId p
-    , puzzleRole    = parseRole (pzRole p)
-    , puzzlePrereqs = pzPrereqs p
-    , puzzleRemedy  = map remedyFrom (pzRemedies p)
+    , puzzleId      = metaId m
+    , puzzleRole    = parseRole (puRole ref)
+    , puzzlePrereqs = puPrereqs ref
+    , puzzleRemedy  = map remedyFrom (puRemedies ref)
     }
 
--- | Look up an inlined file's contents by the path the spec refers to.
-resolve :: Map Text Text -> Text -> Either Text Text
+-- | Look up an inlined level file by the path the table of contents refers to.
+resolve :: Map Text FileSpec -> Text -> Either Text FileSpec
 resolve files f =
   maybe (Left ("bundle is missing file: " <> f)) Right (Map.lookup f files)
 

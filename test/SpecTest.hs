@@ -4,12 +4,12 @@
 -- | Native, headless tests for the Phase 3 data pipeline.
 --
 -- These run under ordinary GHC (no wasm), so they exercise the pure parts —
--- 'RzkGame.Spec' (the schema, the @.rzk.md@ splitter, the goal reconstruction)
--- and 'RzkGame.Loader.buildGame' — and also play every loaded level through the
--- real rzk 'checkLevel'. The headline test round-trips the built-in
--- /Morphisms/ section through a synthesized @game.json@ bundle and asserts
--- 'buildGame' reproduces it exactly: the goal name and type are /not/ stored in
--- the bundle, so a faithful reproduction proves the reconstruction is correct.
+-- 'RzkGame.Spec' (the schema, the @.rzk.md@ body readers, the goal
+-- reconstruction) and 'RzkGame.Loader.buildGame' — and also play every loaded
+-- level through the real rzk 'checkLevel'. The headline test round-trips the
+-- built-in /Morphisms/ section through a synthesized @game.json@ bundle and
+-- asserts 'buildGame' reproduces it exactly: the goal name and type are /not/
+-- stored in the bundle, so a faithful reproduction proves the reconstruction.
 module Main (main) where
 
 import           Control.Exception    (SomeException, try)
@@ -26,7 +26,8 @@ import           RzkGame.Content      (gameLevels, gameSections)
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
-import           RzkGame.Spec         (goalFromTemplate, splitLevelSource)
+import           RzkGame.Spec         (goalFromTemplate, levelProse,
+                                      splitLevelSource)
 
 main :: IO ()
 main = do
@@ -42,24 +43,26 @@ main = do
           (goalFromTemplate (levelTemplate lvl)
              == Right (levelGoalName lvl, levelGoalType lvl))
 
-  -- 2. The splitter recovers the three role blocks (and ignores prose / other
-  --    fences), and the recovered template feeds goalFromTemplate.
-  putStrLn "== splitLevelSource: a sample .rzk.md splits into prelude/template/solution =="
-  check "splitter result" (splitLevelSource sampleMd == Right
+  -- 2. The block splitter recovers the three role blocks (ignoring prose and
+  --    other fences); levelProse recovers the intro and the conclusion.
+  putStrLn "== splitLevelSource / levelProse: a sample body reads correctly =="
+  check "splitter result" (splitLevelSource sampleBody == Right
     ( "#lang rzk-1\n#def hom (A : U) (x y : A) : U\n  := (t : Δ¹) → A [ t ≡ 0₂ ↦ x , t ≡ 1₂ ↦ y ]\n"
     , "#def my-id (A : U) (x : A)\n  : hom A x x\n  := ?\n"
     , "#def my-id (A : U) (x : A)\n  : hom A x x\n  := \\ t → x\n" ))
-  check "splitter then goal" (case splitLevelSource sampleMd of
+  check "splitter then goal" (case splitLevelSource sampleBody of
     Right (_, tmpl, _) -> goalFromTemplate tmpl == Right ("my-id", "(A : U) → (x : A) → hom A x x")
     _                  -> False)
+  check "levelProse intro/conclusion"
+    (levelProse sampleBody
+       == ("Some intro prose, ignored by the splitter.", "That was the conclusion."))
 
   -- 3. buildGame round-trips the built-in Morphisms section: synthesize a bundle
-  --    from it, decode it, and require an exact match. The goal name/type are not
-  --    in the bundle, so this also pins the reconstruction end-to-end.
+  --    from it, decode it, and require an exact match. The goal name/type and the
+  --    intro/conclusion are recovered, not stored, so this pins the readers too.
   putStrLn "== buildGame: the Morphisms section round-trips through a JSON bundle =="
   let morphisms = head gameSections
-      bundle    = bundleFor "Round-trip" [morphisms]
-  case buildGame (BL.toStrict (encode bundle)) of
+  case buildGame (BL.toStrict (encode (bundleFor "Round-trip" [morphisms]))) of
     Left err   -> check ("buildGame error: " <> T.unpack err) False
     Right secs -> do
       check "round-trips to one section" (length secs == 1)
@@ -105,10 +108,11 @@ isHoles :: CheckResult -> Bool
 isHoles (Holes _) = True
 isHoles _         = False
 
--- | A minimal @.rzk.md@ sample: a prelude and template/solution blocks, with a
--- stray prose line and a non-rzk fence the splitter must ignore.
-sampleMd :: Text
-sampleMd = T.unlines
+-- | A sample level body: intro prose, the three role blocks (and a non-rzk fence
+-- to ignore), and a trailing conclusion — the shape a level file's body has once
+-- the bundler has stripped its front-matter.
+sampleBody :: Text
+sampleBody = T.unlines
   [ "Some intro prose, ignored by the splitter."
   , ""
   , "```rzk prelude"
@@ -132,17 +136,21 @@ sampleMd = T.unlines
   , "  : hom A x x"
   , "  := \\ t → x"
   , "```"
+  , ""
+  , "## Conclusion"
+  , ""
+  , "That was the conclusion."
   ]
 
 -- | Synthesize a @game.json@ bundle 'Value' from sections, re-deriving each
--- puzzle's @.rzk.md@ from its level fields (the inverse of 'splitLevelSource').
--- This lets a test round-trip the built-in model through the loader without
--- hand-writing large JSON literals.
+-- item's table-of-contents reference and its inlined file (front-matter @meta@ +
+-- Markdown @body@). This is the inverse of the loader, so a test can round-trip
+-- the built-in model through 'buildGame' without hand-writing JSON literals.
 bundleFor :: Text -> [Section] -> Value
 bundleFor title secs = object
   [ "config" .= object [ "title" .= title, "sections" .= map sectionV secs ]
-  , "files"  .= object [ Key.fromText (levelPath (puzzleId z)) .= levelMd (puzzleLevel z)
-                       | s <- secs, SPuzzle z <- sectionItems s ]
+  , "files"  .= object [ Key.fromText (refPath it) .= fileV it
+                       | s <- secs, it <- sectionItems s ]
   ]
 
 sectionV :: Section -> Value
@@ -152,46 +160,50 @@ sectionV s = object
   , "items" .= map itemV (sectionItems s)
   ]
 
+-- | The table-of-contents entry: a tagged file reference, plus a puzzle's
+-- placement metadata (role and prereqs).
 itemV :: SectionItem -> Value
-itemV (SProse p)  = object [ "prose"  .= proseV p ]
-itemV (SPuzzle z) = object [ "puzzle" .= puzzleV z ]
+itemV (SProse p)  = object [ "prose"  .= object [ "file" .= refPath (SProse p) ] ]
+itemV (SPuzzle z) = object [ "puzzle" .= object
+  [ "file"    .= refPath (SPuzzle z)
+  , "role"    .= roleWord (puzzleRole z)
+  , "prereqs" .= puzzlePrereqs z
+  ] ]
 
-proseV :: Prose -> Value
-proseV p = object
-  [ "id"    .= proseId p
-  , "title" .= proseTitle p
-  , "role"  .= fmap bopppsWord (proseRole p)
-  , "text"  .= proseText p
+-- | The inlined file for an item: its front-matter @meta@ and its @body@.
+fileV :: SectionItem -> Value
+fileV (SProse p) = object
+  [ "meta" .= object
+      [ "id" .= proseId p, "title" .= proseTitle p
+      , "role" .= fmap bopppsWord (proseRole p) ]
+  , "body" .= proseText p
   ]
-
-puzzleV :: PuzzleItem -> Value
-puzzleV z = object
-  [ "id"         .= puzzleId z
-  , "role"       .= roleWord (puzzleRole z)
-  , "file"       .= levelPath (puzzleId z)
-  , "title"      .= levelTitle lvl
-  , "statement"  .= levelStatement lvl
-  , "intro"      .= levelIntro lvl
-  , "conclusion" .= levelConclusion lvl
-  , "inventory"  .= levelInventory lvl
-  , "prereqs"    .= puzzlePrereqs z
+fileV (SPuzzle z) = object
+  [ "meta" .= object
+      [ "id" .= puzzleId z, "title" .= levelTitle lvl
+      , "statement" .= levelStatement lvl, "inventory" .= levelInventory lvl ]
+  , "body" .= levelBody lvl
   ]
   where lvl = puzzleLevel z
 
--- | Re-fence a level's three rzk fields into a @.rzk.md@ source. 'splitLevelSource'
--- rejoins the block bodies with 'T.unlines', so emitting @T.lines@ of each field
--- between fences reproduces the field exactly (each carries a trailing newline).
-levelMd :: Level -> Text
-levelMd lvl = T.concat
-  [ fenced "prelude"  (levelPrelude lvl)
+refPath :: SectionItem -> Text
+refPath (SProse p)  = "levels/" <> proseId p <> ".md"
+refPath (SPuzzle z) = "levels/" <> puzzleId z <> ".rzk.md"
+
+-- | Re-assemble a level body from its fields (the inverse of 'splitLevelSource'
+-- and 'levelProse'): intro, the three re-fenced rzk blocks, then a @## Conclusion@
+-- section. Block bodies are emitted as @T.lines@ between fences, which the
+-- splitter rejoins with 'T.unlines' to reproduce each field exactly.
+levelBody :: Level -> Text
+levelBody lvl = T.concat
+  [ levelIntro lvl, "\n\n"
+  , fenced "prelude"  (levelPrelude lvl)
   , fenced "template" (levelTemplate lvl)
   , fenced "solution" (levelSolution lvl)
+  , "## Conclusion\n\n", levelConclusion lvl, "\n"
   ]
   where
-    fenced role body = T.unlines (("```rzk " <> role) : T.lines body <> ["```"])
-
-levelPath :: Text -> Text
-levelPath pid = "levels/" <> pid <> ".rzk.md"
+    fenced role body = T.unlines (("```rzk " <> role) : T.lines body <> ["```", ""])
 
 bopppsWord :: Boppps -> Text
 bopppsWord = \case

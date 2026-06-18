@@ -1,31 +1,38 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | The game spec: the authorable schema and the @.rzk.md@ block splitter.
+-- | The game spec: the authorable schema and the level-file readers.
 --
 -- Phase 3 lifts the game content out of Haskell ('RzkGame.Content') into data.
--- An author writes a @game.yaml@ (the structure and prose) plus one
--- @levels/<id>.rzk.md@ per puzzle (the rzk code, split into tagged blocks). A
--- native bundle step packs the YAML — converted to JSON — and the inlined file
--- contents into a single @game.json@ bundle; 'RzkGame.Loader.buildGame' decodes
--- that bundle and rebuilds the same @['Section']@ the engine already consumes.
+-- A game is a /table of contents/ (@game.yaml@) plus one self-contained file per
+-- item: a @levels/<id>.rzk.md@ for a puzzle (its metadata, prose, and rzk code)
+-- or a @levels/<id>.md@ for a prose page. Each level file carries a YAML
+-- front-matter header (the intrinsic metadata) followed by a Markdown body. The
+-- table of contents only orders the files and adds /placement/ metadata — the
+-- curriculum role, prerequisites, and remediation — which is about a level's
+-- place in /this/ game, not the level itself. So a level file is portable across
+-- games, and the locking graph stays visible in one place.
 --
--- This module holds the half of that pipeline that is pure and parse-only: the
--- 'FromJSON' schema records (mirroring the 'RzkGame.Section' model field for
--- field) and the two text functions that recover a 'RzkGame.Level' from a
--- @.rzk.md@ source — 'splitLevelSource' and 'goalFromTemplate'. No rzk
--- type-checking happens here, so the splitter is exercised headlessly.
+-- A native bundle step parses the YAML (the @game.yaml@ and each file's
+-- front-matter), splits front-matter from body, and packs everything as JSON, so
+-- the wasm app only ever parses JSON (decision D1). This module holds the pure
+-- side: the 'FromJSON' schema records and the body readers — 'splitLevelSource'
+-- (the rzk blocks), 'levelProse' (intro and conclusion), and 'goalFromTemplate'.
 module RzkGame.Spec
-  ( -- * Bundle and schema
+  ( -- * Bundle and table of contents
     Bundle (..)
   , GameSpec (..)
   , SectionSpec (..)
   , ItemSpec (..)
-  , ProseSpec (..)
-  , PuzzleSpec (..)
+  , ProseRef (..)
+  , PuzzleRef (..)
   , RemedySpec (..)
-    -- * Level-source splitting
+    -- * Inlined level files
+  , FileSpec (..)
+  , Meta (..)
+    -- * Reading a level body
   , splitLevelSource
+  , levelProse
   , goalFromTemplate
   ) where
 
@@ -38,13 +45,13 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 
 -- | The single JSON bundle the wasm app fetches: the @game.yaml@ as JSON under
--- @config@, and every referenced file's contents inlined under @files@ (keyed by
--- the path the spec refers to, e.g. @"levels/my-id.rzk.md"@). Bundling YAML→JSON
--- and inlining the files happens in the native bundle step, so the app only ever
--- parses JSON (with aeson, which already runs under the wasm backend).
+-- @config@, and every referenced level file inlined under @files@, keyed by the
+-- path the table of contents refers to (e.g. @"levels/my-id.rzk.md"@). The
+-- bundle step has already parsed each file's YAML front-matter and split it from
+-- the body, so each inlined file is a 'FileSpec', not raw text.
 data Bundle = Bundle
   { bundleConfig :: GameSpec
-  , bundleFiles  :: Map Text Text
+  , bundleFiles  :: Map Text FileSpec
   } deriving (Eq, Show)
 
 instance FromJSON Bundle where
@@ -52,7 +59,7 @@ instance FromJSON Bundle where
     <$> o .: "config"
     <*> o .:? "files" .!= mempty
 
--- | The game configuration (the @game.yaml@): a title and the ordered sections.
+-- | The table of contents (the @game.yaml@): a title and the ordered sections.
 data GameSpec = GameSpec
   { gsTitle    :: Text
   , gsSections :: [SectionSpec]
@@ -76,12 +83,13 @@ instance FromJSON SectionSpec where
     <*> o .:? "title" .!= ""
     <*> o .:? "items" .!= []
 
--- | One item in a section: either a prose pseudo-level or a puzzle. The JSON is
--- an object tagged by a single key — @{ "prose": … }@ or @{ "puzzle": … }@ —
--- which keeps the author's YAML readable and the items self-describing.
+-- | One item in a section: a reference to a prose or a puzzle file. The JSON is
+-- tagged by a single key — @{ "prose": … }@ or @{ "puzzle": … }@ — so the table
+-- of contents is self-describing and the loader never guesses an item's kind
+-- from its file extension.
 data ItemSpec
-  = ItemProse  ProseSpec
-  | ItemPuzzle PuzzleSpec
+  = ItemProse  ProseRef
+  | ItemPuzzle PuzzleRef
   deriving (Eq, Show)
 
 instance FromJSON ItemSpec where
@@ -89,54 +97,30 @@ instance FromJSON ItemSpec where
         (ItemProse  <$> o .: "prose")
     <|> (ItemPuzzle <$> o .: "puzzle")
 
--- | A prose pseudo-level. The text is inline (@text@) or pulled from an inlined
--- file (@file@); 'role' is an optional BOPPPS tag (advisory, for labelling).
--- Unlike the 'RzkGame.Section' 'Prose' record, the schema also carries a short
--- 'psTitle' for the picker, since the model needs one.
-data ProseSpec = ProseSpec
-  { psId    :: Text
-  , psTitle :: Text
-  , psRole  :: Maybe Text
-  , psText  :: Maybe Text
-  , psFile  :: Maybe Text
+-- | A prose item: just a file reference. All of a prose page's metadata (id,
+-- title, BOPPPS role) lives in that file's front-matter.
+newtype ProseRef = ProseRef
+  { prFile :: Text
   } deriving (Eq, Show)
 
-instance FromJSON ProseSpec where
-  parseJSON = withObject "ProseSpec" $ \o -> ProseSpec
-    <$> o .: "id"
-    <*> o .:? "title" .!= ""
-    <*> o .:? "role"
-    <*> o .:? "text"
-    <*> o .:? "file"
+instance FromJSON ProseRef where
+  parseJSON = withObject "ProseRef" $ \o -> ProseRef <$> o .: "file"
 
--- | A puzzle. The prose fields (@title@/@statement@/@intro@/@conclusion@/
--- @inventory@) live here in the spec; the rzk code (prelude, template, solution)
--- comes from the referenced @file@, split by 'splitLevelSource'. @role@ is the
--- curriculum role (@core@/@pretest@/@extra@, default @core@); @prereqs@ and
--- @remedies@ are the locking metadata.
-data PuzzleSpec = PuzzleSpec
-  { pzId         :: Text
-  , pzRole       :: Maybe Text
-  , pzFile       :: Text
-  , pzTitle      :: Text
-  , pzStatement  :: Text
-  , pzIntro      :: Text
-  , pzConclusion :: Text
-  , pzInventory  :: [Text]
-  , pzPrereqs    :: [Text]
-  , pzRemedies   :: [RemedySpec]
+-- | A puzzle item: a file reference plus the /placement/ metadata that belongs
+-- to the table of contents rather than to the level itself — the curriculum
+-- 'puRole' (@core@/@pretest@/@extra@, default @core@), the 'puPrereqs' (ids of
+-- puzzles that must be satisfied to unlock this one), and the 'puRemedies'.
+data PuzzleRef = PuzzleRef
+  { puFile     :: Text
+  , puRole     :: Maybe Text
+  , puPrereqs  :: [Text]
+  , puRemedies :: [RemedySpec]
   } deriving (Eq, Show)
 
-instance FromJSON PuzzleSpec where
-  parseJSON = withObject "PuzzleSpec" $ \o -> PuzzleSpec
-    <$> o .: "id"
+instance FromJSON PuzzleRef where
+  parseJSON = withObject "PuzzleRef" $ \o -> PuzzleRef
+    <$> o .: "file"
     <*> o .:? "role"
-    <*> o .: "file"
-    <*> o .:? "title" .!= ""
-    <*> o .:? "statement" .!= ""
-    <*> o .:? "intro" .!= ""
-    <*> o .:? "conclusion" .!= ""
-    <*> o .:? "inventory" .!= []
     <*> o .:? "prereqs" .!= []
     <*> o .:? "remedies" .!= []
 
@@ -156,9 +140,44 @@ instance FromJSON RemedySpec where
     <*> o .:? "level"
     <*> o .:? "url"
 
--- | Split a @.rzk.md@ level source into its @(prelude, template, solution)@ rzk
--- code, by the role word on each fenced block (decision D2). A block opens with
--- a fence whose info string is @rzk <role>@ and closes with a bare @```@:
+-- | An inlined level file: its parsed front-matter 'Meta' and its Markdown
+-- 'fileBody'. The bundle step produces these; the loader reads the body with
+-- 'splitLevelSource' / 'levelProse' and combines it with the metadata.
+data FileSpec = FileSpec
+  { fileMeta :: Meta
+  , fileBody :: Text
+  } deriving (Eq, Show)
+
+instance FromJSON FileSpec where
+  parseJSON = withObject "FileSpec" $ \o -> FileSpec
+    <$> o .:? "meta" .!= emptyMeta
+    <*> o .:? "body" .!= ""
+
+-- | A level file's front-matter: the metadata intrinsic to the level. A puzzle
+-- uses 'metaStatement' and 'metaInventory'; a prose page uses only id, title,
+-- and (BOPPPS) role. Unused fields default empty, so one record serves both.
+data Meta = Meta
+  { metaId        :: Text
+  , metaTitle     :: Text
+  , metaRole      :: Maybe Text
+  , metaStatement :: Text
+  , metaInventory :: [Text]
+  } deriving (Eq, Show)
+
+emptyMeta :: Meta
+emptyMeta = Meta "" "" Nothing "" []
+
+instance FromJSON Meta where
+  parseJSON = withObject "Meta" $ \o -> Meta
+    <$> o .:? "id" .!= ""
+    <*> o .:? "title" .!= ""
+    <*> o .:? "role"
+    <*> o .:? "statement" .!= ""
+    <*> o .:? "inventory" .!= []
+
+-- | Split a level body into its @(prelude, template, solution)@ rzk code, by the
+-- role word on each fenced block (decision D2). A block opens with a fence whose
+-- info string is @rzk <role>@ and closes with a bare @```@:
 --
 -- > ```rzk prelude
 -- > #def id-hom … := …
@@ -166,11 +185,11 @@ instance FromJSON RemedySpec where
 --
 -- The @prelude@ is every @prelude@ block concatenated in order; the @template@
 -- and @solution@ are the single block of each role. Other fenced blocks (a plain
--- @```rzk@, or another language) and the surrounding Markdown prose are ignored.
--- Each block's body is rejoined with 'T.unlines' (so it carries a trailing
--- newline, matching the hand-authored 'RzkGame.Content' fields). Fails when a
--- @template@ or @solution@ block is missing or duplicated, or a fence is left
--- unterminated.
+-- @```rzk@ display block in the intro, or another language) and the surrounding
+-- Markdown prose are ignored. Each block's body is rejoined with 'T.unlines' (so
+-- it carries a trailing newline, matching the hand-authored 'RzkGame.Content'
+-- fields). Fails when a @template@ or @solution@ block is missing or duplicated,
+-- or a fence is left unterminated.
 splitLevelSource :: Text -> Either Text (Text, Text, Text)
 splitLevelSource src = do
   blocks   <- parseBlocks (T.lines src)
@@ -184,13 +203,29 @@ splitLevelSource src = do
       []  -> Left ("missing a `rzk " <> name <> "` block")
       _   -> Left ("expected exactly one `rzk " <> name <> "` block")
 
+-- | The prose of a level body: its @(intro, conclusion)@. The intro is the
+-- Markdown before the first role-tagged rzk block (so a plain @```rzk@ display
+-- block stays part of the intro); the conclusion is the Markdown under a trailing
+-- @## Conclusion@ heading. Either is empty when absent. The text is trimmed, to
+-- match the hand-authored fields which carry no surrounding whitespace.
+levelProse :: Text -> (Text, Text)
+levelProse body = (intro, conclusion)
+  where
+    ls    = T.lines body
+    intro = T.strip (T.unlines (takeWhile (not . isRoleFence) ls))
+    conclusion = case dropWhile (not . isConclusionHeading) ls of
+      (_ : rest) -> T.strip (T.unlines rest)
+      []         -> ""
+    isRoleFence l   = case fenceRole l of Just (Just _) -> True; _ -> False
+    isConclusionHeading l = T.strip l == "## Conclusion"
+
 -- | Parse the fenced code blocks of a Markdown source into @(role, body lines)@
 -- pairs, in order. Lines outside a recognised block are dropped.
 parseBlocks :: [Text] -> Either Text [(Text, [Text])]
 parseBlocks = go
   where
     go [] = Right []
-    go (l : rest) = case fenceOpen l of
+    go (l : rest) = case fenceRole l of
       Nothing   -> go rest
       Just role ->
         let (body, after) = break isFenceClose rest
@@ -200,20 +235,19 @@ parseBlocks = go
                Just r  -> ((r, body) :) <$> go ys
                Nothing -> go ys
 
-    -- A fence-open line. 'Nothing' if the line is not a fence; @Just (Just role)@
-    -- for a recognised @rzk <role>@ block; @Just Nothing@ for any other fence
-    -- (whose body we skip past but do not collect).
-    fenceOpen :: Text -> Maybe (Maybe Text)
-    fenceOpen line
-      | "```" `T.isPrefixOf` s =
-          case T.words (T.drop 3 s) of
-            ("rzk" : r : _) | r `elem` roles -> Just (Just r)
-            _                                -> Just Nothing
-      | otherwise = Nothing
-      where s = T.stripStart line
-    roles = ["prelude", "template", "solution"]
-
     isFenceClose line = T.strip line == "```"
+
+-- | Classify a line as a code-fence opener. 'Nothing' if it is not a fence;
+-- @Just (Just role)@ for a recognised @rzk <role>@ block; @Just Nothing@ for any
+-- other fence (a plain @```rzk@, another language, or a bare closing @```@).
+fenceRole :: Text -> Maybe (Maybe Text)
+fenceRole line
+  | "```" `T.isPrefixOf` s =
+      case T.words (T.drop 3 s) of
+        ("rzk" : r : _) | r `elem` ["prelude", "template", "solution"] -> Just (Just r)
+        _                                                              -> Just Nothing
+  | otherwise = Nothing
+  where s = T.stripStart line
 
 -- | Recover the goal — the pinned definition name and its required /closed/
 -- Π-type — from a @template@ block's @#def@. The win-condition check appends
