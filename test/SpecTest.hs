@@ -228,6 +228,26 @@ main = do
   check "a non-gated level never fails the gate"
     (gatePassed (head gameLevels) "#def x := whatever-undefined-thing")
 
+  -- 11. Error ordering: a wrong-typed editable region renders an error whose
+  --     first non-empty line is the headline mismatch, not the global context
+  --     dump. The engine formats TopDown, so the message leads (LSP-style).
+  putStrLn "== type error ordering: the message leads, not the context dump =="
+  let rut   = head [ l | l <- gameLevels, levelTitle l == "The right-unit triangle" ]
+      wrong = T.unlines
+        [ "#def rut (A : U) (x y : A) (f : hom A x y)"
+        , "  : hom2 A x y y f (id-hom A y) f"
+        , "  := \\ (t , s) → f s" ]      -- wrong branch: f s instead of f t
+      firstLine txt = case filter (not . T.null . T.strip) (T.lines txt) of
+        (l : _) -> T.strip l
+        []      -> ""
+  case checkLevel rut wrong of
+    TypeError e _ -> do
+      check "the error leads with the mismatch, not the context dump"
+        (firstLine e == "cannot unify term")
+      check "the global context dump is not the leading line"
+        (not ("Definitions in context" `T.isPrefixOf` firstLine e))
+    r -> check ("expected a TypeError, got " <> show r) False
+
   n <- readIORef failed
   if n == 0
     then putStrLn "\nAll Phase 3 spec/loader tests passed."
