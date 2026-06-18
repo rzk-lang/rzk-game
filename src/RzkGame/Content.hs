@@ -577,13 +577,13 @@ unfoldingSquareLevel :: Level
 unfoldingSquareLevel = Level
   { levelTitle     = "Unfolding a triangle"
   , levelIntro     =
-      "The associativity proof lives in the arrow type, and there the cells are *squares* $\\Delta^1\\times\\Delta^1 \\to A$, not triangles. A triangle fills only the lower half $s \\le t$ of the square. To fill the whole square, reflect the triangle across the diagonal: on the upper half $t \\le s$ reuse the same triangle with its two coordinates *swapped*. Build a `recOR` that splits the square along the diagonal — keep `triangle (t , s)` on $s \\le t$ and the reflected `triangle (s , t)` on $t \\le s$. No Segal hypothesis is needed; this is reparametrisation."
+      "The associativity proof lives in the arrow type, and there the cells are *squares* $\\Delta^1\\times\\Delta^1 \\to A$, not triangles. A triangle fills only the lower half $s \\le t$ of the square. To fill the whole square, reflect the triangle across the diagonal: on the upper half $t \\le s$ reuse the same triangle with its two coordinates *swapped*. The `recOR` splits the square along the diagonal; fill each branch. No Segal hypothesis is needed — this is reparametrisation."
   , levelStatement = "Δ¹×Δ¹ → A"
   , levelPrelude   = assocPreludeFor []
   , levelTemplate  = T.unlines
       [ "#def unfolding-square (A : U) (triangle : Δ² → A)"
       , "  : Δ¹×Δ¹ → A"
-      , "  := \\ (t , s) → ?"
+      , "  := \\ (t , s) → recOR ( t ≤ s ↦ ? , s ≤ t ↦ ? )"
       ]
   , levelSolution  = T.unlines
       [ "#def unfolding-square (A : U) (triangle : Δ² → A)"

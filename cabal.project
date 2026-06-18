@@ -9,13 +9,15 @@ packages: .
 
 -- rzk: holes + structured goal/context query (#236–#240), pattern binder-name
 -- restoration (#242), structured hole JSON (#243), per-hole elimination
--- candidates (#244), and introduction forms + tope-context moves, the idJ
--- eliminator, and the bare-pattern rendering fix (#245). Pinned to the #245
--- merge commit on develop (a stable ref).
+-- candidates (#244), introduction forms + tope-context moves, the idJ
+-- eliminator, the bare-pattern rendering fix (#245), and checking recOR
+-- branches against the expected type (#247), which lets a bare hole sit inside
+-- a recOR branch (used by the unfolding-square level). Pinned to the #247 head
+-- commit; #247 is not yet merged, so re-pin to the merge commit once it lands.
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: d58c53d23e7b70bc87a9ff5c44450e83050df955
+  tag: 8fcdb428812a3c0f0914e617a8cbf17708331f2a
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.

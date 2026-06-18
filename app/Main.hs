@@ -235,10 +235,9 @@ hsSelftest = do
   putStrLn "== compose-witness tap chain: spine then x y z f g (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain composeWitnessLevel ["second (first (is-segal-A ? ? ? ? ?))", "x", "y", "z", "f", "g"])))
-  putStrLn "== unfolding-square: give the diagonal-split recOR (expect Solved) =="
+  putStrLn "== unfolding-square: fill both recOR branches (expect Solved) =="
   putStrLn (T.unpack (renderResult
-    (tapChain unfoldingSquareLevel
-      ["recOR ( t ≤ s ↦ triangle (s , t) , s ≤ t ↦ triangle (t , s) )"])))
+    (tapChain unfoldingSquareLevel ["triangle (s , t)", "triangle (t , s)"])))
   putStrLn "== witness-square: give the composition witness (expect Solved) =="
   putStrLn (T.unpack (renderResult
     (tapChain witnessSquareLevel ["witness-comp-is-segal A is-segal-A x y z f g"])))
