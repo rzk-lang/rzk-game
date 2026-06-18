@@ -22,6 +22,7 @@ library
     RzkGame.Spec
     RzkGame.Loader
     RzkGame.Save
+    RzkGame.Format
   build-depends:
       base
     , aeson
@@ -80,6 +81,23 @@ executable rzk-game-bundle
     , filepath
     , text
     , yaml
+  default-language: Haskell2010
+  ghc-options:      -Wall
+  if arch(wasm32)
+    buildable: False
+
+-- | The native authoring tool behind @make format-game@: rewrite the @game/@
+-- prelude blocks in place with rzk's canonical formatting (via
+-- 'RzkGame.Format'). Not part of the normal build; never built for wasm.
+executable rzk-game-format
+  main-is:          FormatGame.hs
+  hs-source-dirs:   tools
+  build-depends:
+      base
+    , directory
+    , filepath
+    , text
+    , rzk-game
   default-language: Haskell2010
   ghc-options:      -Wall
   if arch(wasm32)

@@ -47,6 +47,7 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
 import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
                                      tokClassName)
 import           RzkGame.Level
+import           RzkGame.Format     (formatEditable)
 import           RzkGame.Loader     (buildGame)
 import           RzkGame.Save       (decodeArchive, encodeArchive)
 import           RzkGame.Section
@@ -132,6 +133,7 @@ data Model = Model
   , _mapOpen  :: Bool                      -- ^ whether the full level map is shown
   , _confirmReset :: Bool                  -- ^ whether the reset confirmation is showing
   , _importMsg :: Maybe (Either T.Text Int) -- ^ last import result: error, or count restored
+  , _formatOnCheck :: Bool                  -- ^ format the editable region before each check
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -167,6 +169,9 @@ confirmReset = lens _confirmReset $ \m v -> m { _confirmReset = v }
 importMsg :: Lens Model (Maybe (Either T.Text Int))
 importMsg = lens _importMsg $ \m v -> m { _importMsg = v }
 
+formatOnCheck :: Lens Model Bool
+formatOnCheck = lens _formatOnCheck $ \m v -> m { _formatOnCheck = v }
+
 -- | The slot currently being shown.
 currentSlot :: Model -> Slot
 currentSlot m = slotAt (_slotIx m)
@@ -193,11 +198,12 @@ data Action
   | Refine T.Text
   | Undo                       -- ^ revert the last tap-to-refine or Reset
   | Check
+  | Format                     -- ^ tidy the editable region with rzk's formatter
   | Reset
   | SelectSlot Int             -- ^ navigate to a slot (prose or puzzle)
   | ToggleMap                  -- ^ show/hide the full level map
   | Init                       -- ^ dispatched at mount: load saved state + draft
-  | LoadState (Set Int) (Set T.Text) (Map T.Text PretestAnswer) (Set T.Text)
+  | LoadState LoadedState       -- ^ install the persisted player state read at 'Init'
   | ApplyText Int MisoString   -- ^ install a puzzle's restored draft (by index)
   | SetPretest T.Text PretestAnswer  -- ^ record a pre-test self-assessment
   | Unlock T.Text              -- ^ override a lock ("Unlock anyway"), by puzzle id
@@ -209,6 +215,7 @@ data Action
   | CancelReset                -- ^ dismiss the reset confirmation
   | SetImportMsg (Maybe (Either T.Text Int))  -- ^ show the result of an applied import
   | DismissImportMsg           -- ^ dismiss the import result banner
+  | SetFormatOnCheck Bool      -- ^ toggle (and persist) the format-on-check preference
   -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
 
 main :: IO ()
@@ -252,6 +259,16 @@ hsGameCheck = do
           solves = checkLevel lvl (levelSolution lvl) == Solved
       putStrLn ("first level: " <> T.unpack (levelTitle lvl))
       putStrLn (if holes && solves then "loaded-play: OK" else "LOADED-PLAY FAILED")
+      -- Formatting the editable region, inside wasm, against the real loaded
+      -- level: a formatted template still holes, a formatted solution still
+      -- solves, and formatting is stable (a fixpoint).
+      let ft = formatEditable (levelTemplate lvl)
+          fs = formatEditable (levelSolution lvl)
+          fHoles = case checkLevel lvl ft of Holes _ -> True; _ -> False
+          fSolves = checkLevel lvl fs == Solved
+          stable  = formatEditable ft == ft && formatEditable fs == fs
+      putStrLn (if fHoles && fSolves && stable
+                  then "loaded-format: OK" else "LOADED-FORMAT FAILED")
 
 -- | Headless proof of the export/import round-trip in wasm, against the same
 -- @localStorage@ shim @loadtest.mjs@ uses (driven by @progresscheck.mjs@). Seed
@@ -513,7 +530,7 @@ app = (component initModel updateModel viewModel)
 
 initModel :: Model
 initModel = enterSlotPure 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False Nothing)
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False Nothing False)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -593,6 +610,34 @@ readUnlocked = maybe Set.empty decodeTextSet <$> getLocalStorage unlockedKey
 saveUnlocked :: Set T.Text -> IO ()
 saveUnlocked = setLocalStorage unlockedKey . encodeTextSet
 
+-- | The format-on-check preference, stored as @"1"@ / @"0"@. Absent (or any
+-- other value) reads as off, so the default is never to reformat on a check.
+formatOnCheckKey :: MisoString
+formatOnCheckKey = "rzk-game-format-on-check"
+
+readFormatOnCheck :: IO Bool
+readFormatOnCheck = (== Just "1") <$> getLocalStorage formatOnCheckKey
+
+saveFormatOnCheck :: Bool -> IO ()
+saveFormatOnCheck b = setLocalStorage formatOnCheckKey (if b then "1" else "0")
+
+-- | The persisted player state read at startup: the solved set, viewed prose,
+-- pre-test answers, unlock overrides, and the format-on-check preference. It is
+-- read by 'Init' and applied to the model by 'LoadState'. Bundling the reads
+-- into one record keeps that action's payload readable as the saved state grows.
+data LoadedState = LoadedState
+  { lsSolved        :: Set Int
+  , lsViewed        :: Set T.Text
+  , lsPretest       :: Map T.Text PretestAnswer
+  , lsUnlocked      :: Set T.Text
+  , lsFormatOnCheck :: Bool
+  }
+
+readLoadedState :: IO LoadedState
+readLoadedState = LoadedState
+  <$> readProgress <*> readViewed <*> readPretest <*> readUnlocked
+  <*> readFormatOnCheck
+
 -- | Per-level draft storage. Each puzzle's in-progress text is saved under its
 -- own key, so the raw source needs no escaping (unlike a single packed value).
 -- A draft for a level no longer in the list simply lingers, harmlessly unread.
@@ -620,7 +665,7 @@ loadDraftAction i =
 -- load, not player data.
 playerDataKeys :: [MisoString]
 playerDataKeys =
-  [progressKey, viewedKey, pretestKey, unlockedKey]
+  [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey]
     ++ [ draftKey i | i <- [0 .. length gameLevels - 1] ]
 
 -- | Whether a key from an imported archive is player data we will restore. The
@@ -628,7 +673,8 @@ playerDataKeys =
 -- the current game, matching how a stale draft is otherwise tolerated).
 isPlayerDataKey :: T.Text -> Bool
 isPlayerDataKey k =
-  k `elem` map fromMisoString [progressKey, viewedKey, pretestKey, unlockedKey]
+  k `elem` map fromMisoString
+             [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey]
     || "rzk-game-draft-" `T.isPrefixOf` k
 
 -- | The scratch key @download.js@ stashes a chosen import file under, read once
@@ -718,19 +764,21 @@ updateModel = \case
     result   .= checkLevel (nthLevel ix) t
     io_ (removeDraft ix)     -- drop the draft so the template stays on next load
   Init -> do
-    io (LoadState <$> readProgress <*> readViewed <*> readPretest <*> readUnlocked)
+    io (LoadState <$> readLoadedState)
     io (SetImportMsg <$> readIORef importResultRef)  -- show an applied import's result
     mix <- currentPuzzleIx
     case mix of
       Just ix -> io (loadDraftAction ix)  -- a puzzle slot 0: restore its draft
       Nothing -> pure ()                  -- a prose slot 0: LoadState marks it viewed
-  LoadState s v pt u -> do
-    solved   .= s
-    pretest  .= pt
-    unlocked .= u
+  LoadState ls -> do
+    solved   .= lsSolved ls
+    pretest  .= lsPretest ls
+    unlocked .= lsUnlocked ls
+    formatOnCheck .= lsFormatOnCheck ls
     -- If slot 0 is prose, it has already been "visited" at mount, so fold it in.
     i <- use slotIx
-    let v' = case slotAt i of
+    let v  = lsViewed ls
+        v' = case slotAt i of
                SlotProse _ p -> Set.insert (proseId p) v
                _             -> v
     viewed .= v'
@@ -753,9 +801,10 @@ updateModel = \case
         result   .= checkLevel (nthLevel i) (fromMisoString s)
       else pure ()
   Refine ins -> withPuzzle $ \ix -> do
+    foc <- use formatOnCheck
     e <- use editable
     history %= (e :)         -- remember the pre-refine text so the tap can be undone
-    let e'  = refineFirstHole ins (fromMisoString e)
+    let e'  = maybeFormat foc (refineFirstHole ins (fromMisoString e))
         res = checkLevel (nthLevel ix) e'
     editable .= ms e'
     result   .= res
@@ -772,10 +821,30 @@ updateModel = \case
         io_ (saveDraft ix prev)
       _ -> pure ()
   Check -> withPuzzle $ \ix -> do
-    e <- use editable
+    foc <- use formatOnCheck
+    e0 <- use editable
+    let e = ms (maybeFormat foc (fromMisoString e0))
+    -- With format-on-check on, a check first tidies the region in place (an
+    -- undoable, saved edit), then checks the formatted text.
+    if e /= e0
+      then do history %= (e0 :); editable .= e; io_ (saveDraft ix e)
+      else pure ()
     let res = checkLevel (nthLevel ix) (fromMisoString e)
     result .= res
     recordSolved ix res
+  Format -> withPuzzle $ \ix -> do
+    e <- use editable
+    let e' = ms (formatEditable (fromMisoString e))
+    -- Only act when formatting changed the text: an already-tidy region needs
+    -- no undo entry, no re-check, and no save. Re-checking on a change keeps the
+    -- squiggled line numbers aligned with the reflowed text.
+    if e' == e
+      then pure ()
+      else do
+        history %= (e :)         -- formatting can be undone
+        editable .= e'
+        result   .= checkLevel (nthLevel ix) (fromMisoString e')
+        io_ (saveDraft ix e')
   ExportProgress -> io_ exportProgress
   ImportProgress -> io_ (jsg0 "pickImport" >> pure ())  -- picks a file, then reloads
   ResetProgress  -> confirmReset .= True
@@ -787,11 +856,21 @@ updateModel = \case
     pretest  .= Map.empty
     unlocked .= Set.empty
     history  .= []
+    formatOnCheck .= False    -- its key is player data too, cleared above
     confirmReset .= False
     io (pure (SelectSlot 0))   -- back to the start; re-seeds the editor and viewed
   SetImportMsg v   -> importMsg .= v
   DismissImportMsg -> importMsg .= Nothing
+  SetFormatOnCheck b -> do
+    formatOnCheck .= b
+    io_ (saveFormatOnCheck b)
   where
+    -- Apply the formatter only when format-on-check is on, leaving the text as
+    -- typed otherwise. The formatter itself no-ops on a non-parsing fragment.
+    maybeFormat :: Bool -> T.Text -> T.Text
+    maybeFormat True  = formatEditable
+    maybeFormat False = id
+
     -- The current slot's global puzzle index, if it is a puzzle.
     currentPuzzleIx = do
       i <- use slotIx
@@ -1078,11 +1157,16 @@ puzzleSlotView m sid ix z =
              , movesView m
              , H.div_ [ P.class_ "buttons" ]
                  [ H.button_ [ P.class_ "primary", H.onClick Check ] [ text "Check" ]
+                 , H.button_ [ P.class_ "secondary", H.onClick Format ] [ text "Format" ]
                  , H.button_ ( [ P.class_ "secondary", H.onClick Undo ]
                                  <> [ P.disabled_ | null (m ^. history) ] )
                      [ text "Undo" ]
                  , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
                  ]
+             , H.label_ [ P.class_ "format-on-check" ]
+                 [ H.input_ [ P.type_ "checkbox", P.checked_ (m ^. formatOnCheck)
+                            , H.onChecked (\(Checked b) -> SetFormatOnCheck b) ]
+                 , text " Format on check" ]
              , H.h3_ [] [ text "Result" ]
              , resultView (m ^. result)
              , conclusionView m lvl

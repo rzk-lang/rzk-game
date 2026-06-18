@@ -27,6 +27,7 @@ import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
 import           RzkGame.Save         (decodeArchive, encodeArchive)
+import           RzkGame.Format       (formatEditable, isWellFormatted)
 import           RzkGame.Spec         (goalFromTemplate, levelProse,
                                       splitLevelSource)
 import qualified Data.List            as List
@@ -117,6 +118,32 @@ main = do
   check "non-string values are dropped"
     (fmap List.sort (decodeArchive "{\"version\": 1, \"saved\": {\"a\": \"x\", \"b\": 123, \"c\": true}}")
        == Right [("a", "x")])
+
+  -- 7. The format wrapper tidies a well-formed region and leaves a mid-edit
+  --    fragment untouched. The exact layout is rzk's concern; here we pin the
+  --    engine's policy: idempotence, that a hole-bearing term is reformatted to
+  --    well-formatted source, and that a non-parsing fragment is a no-op.
+  putStrLn "== RzkGame.Format: formats well-formed regions, no-ops on fragments =="
+  let holey  = "#def my-id (A : U) (x : A)\n  : hom A x x\n  := ?"
+      messy  = "#def foo   (A : U)  : U  :=  A"
+      broken = "#def foo ((("
+  check "formatEditable is idempotent on a hole-bearing term"
+    (formatEditable (formatEditable holey) == formatEditable holey)
+  check "a hole-bearing term formats to well-formatted source"
+    (isWellFormatted (formatEditable holey))
+  check "messy-but-parseable source is actually reformatted"
+    (formatEditable messy /= messy && isWellFormatted (formatEditable messy))
+  check "a non-parsing fragment is returned unchanged"
+    (formatEditable broken == broken)
+
+  -- 8. Authoring guard: every built-in level's prelude is well-formatted, so the
+  --    read-only region the player reads matches rzk's own canonical layout. The
+  --    preludes are formatted in the source (RzkGame.Content) and in the bundled
+  --    game/ files; test 5 above already pins that the two agree.
+  putStrLn "== RzkGame.Format: every built-in prelude is well-formatted =="
+  flip mapM_ (zip [1 :: Int ..] gameLevels) $ \(n, lvl) ->
+    check ("level " <> show n <> " (" <> T.unpack (levelTitle lvl) <> ") prelude")
+          (isWellFormatted (levelPrelude lvl))
 
   n <- readIORef failed
   if n == 0

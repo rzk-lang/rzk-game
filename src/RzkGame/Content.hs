@@ -30,6 +30,7 @@ module RzkGame.Content
 import           Data.Text     (Text)
 import qualified Data.Text     as T
 
+import           RzkGame.Format (formatFixpoint)
 import           RzkGame.Level
 import           RzkGame.Section
 
@@ -219,8 +220,16 @@ proseCompositionSummary = Prose "composition-summary" "Wrap-up" (Just Summary) $
 
 -- | The shared, read-only prelude: the simplicial-HoTT definitions the level
 -- builds on. Checked once; populates the inventory.
+--
+-- The definitions are written compactly here for authoring, then run through
+-- rzk's formatter ('format') so the read-only region the player sees carries
+-- rzk's own canonical layout. The result is the same text the bundled @game/@
+-- prelude blocks hold, so the @rzk-game-spec@ suite can require both that every
+-- prelude is 'isWellFormatted' and that @game/@ reproduces this content exactly.
+-- Formatting is idempotent, so the extended preludes below ('segalPrelude',
+-- 'assocPrelude') stay canonical when they concatenate further definitions.
 prelude :: Text
-prelude = T.unlines
+prelude = formatFixpoint $ T.unlines
   [ "#lang rzk-1"
   , "#def Δ¹ : 2 → TOPE := \\ t → TOP"
   , "#def Δ² : (2 × 2) → TOPE := \\ (t , s) → s ≤ t"
@@ -240,7 +249,7 @@ prelude = T.unlines
 -- a pre-(∞,1)-category (a Segal type); a Rezk type — Segal plus local
 -- univalence — is a genuine (∞,1)-category.
 segalPrelude :: Text
-segalPrelude = prelude <> T.unlines
+segalPrelude = formatFixpoint $ prelude <> T.unlines
   [ "#def is-contr (A : U) : U"
   , "  := Σ (a : A) , (x : A) → a =_{ A } x"
   , "#def is-segal (A : U) : U"
@@ -261,7 +270,7 @@ segalPrelude = prelude <> T.unlines
 -- geometry these levels are about, so we 'postulate' it and focus on the
 -- reparametrisations. This is the only assumption the section adds.
 assocPrelude :: Text
-assocPrelude = segalPrelude <> T.unlines
+assocPrelude = formatFixpoint $ segalPrelude <> T.unlines
   [ "#def Δ³ : (2 × 2 × 2) → TOPE"
   , "  := \\ ((t1 , t2) , t3) → t3 ≤ t2 ∧ t2 ≤ t1"
   , "#def Δ¹×Δ¹ : (2 × 2) → TOPE := \\ (t , s) → TOP ∧ TOP"
@@ -284,7 +293,7 @@ assocPrelude = segalPrelude <> T.unlines
 -- the read-only prelude for the levels that follow, so a level's prelude is
 -- exactly the section's accepted answers so far.
 assocPreludeFor :: [Level] -> Text
-assocPreludeFor prev = assocPrelude <> T.concat (map levelSolution prev)
+assocPreludeFor prev = formatFixpoint $ assocPrelude <> T.concat (map levelSolution prev)
 
 -- | Append a "Useful here" block to a level's intro: the signatures of the
 -- lemmas the solution leans on, as a fenced @rzk@ code block (rendered as a

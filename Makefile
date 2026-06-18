@@ -2,7 +2,7 @@
 # Requires the GHC WASM toolchain on PATH:  source ~/.ghc-wasm/env
 # (install via ghc-wasm-meta, FLAVOUR 9.12).
 
-.PHONY: all build bundle optim serve clean test
+.PHONY: all build bundle optim serve clean test format-game
 
 # Set WASM_STORE to a path to use a project-local cabal store (CI caches it).
 WASM_STORE ?=
@@ -38,6 +38,13 @@ bundle:
 # Headless native tests for the pure data pipeline (RzkGame.Spec / .Loader).
 test:
 	cabal --project-file=cabal.project.native run -v0 test:rzk-game-spec
+
+# Authoring tool (off the normal path): reformat the read-only prelude blocks of
+# the game/ level files in place with rzk's canonical formatting. The test suite
+# checks every prelude is well-formatted; run this when it complains. Templates
+# and reference solutions are left as authored.
+format-game:
+	cabal --project-file=cabal.project.native run -v0 exe:rzk-game-format
 
 # Shrink the module (run after build).
 optim:
