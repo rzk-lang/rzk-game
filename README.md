@@ -42,3 +42,12 @@ Without nix, install the toolchain via
 
 The first build fetches and compiles `rzk` and `miso` under `wasm32-wasi`
 (several minutes).
+
+## Authoring a game
+
+A game is a `game/game.yaml` table of contents plus one file per item under
+`game/levels/`, and needs no Haskell. See
+[`docs/authoring.md`](docs/authoring.md) for the file shapes, the `hints` and
+`gated` keys, how prereqs and remedies gate levels, and how to write a good
+puzzle and a BOPPPS-style section. After editing `game/`, run
+`make bundle && make serve`.
