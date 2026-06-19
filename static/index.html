@@ -115,7 +115,20 @@
     .all-done { margin: .5rem 0; padding: .6rem; background: #dff5df;
                 border: 1px solid #7c7; border-radius: 6px; font-weight: 600;
                 color: #285028; }
+    /* The control bar is a sticky footer, separated from the Moves panel so the
+       controls (Check/Format/Undo/Reset) are always in the same place and never
+       blend into the per-hole move buttons above. On a short viewport it simply
+       sits in flow at the end, in its own bordered group. */
+    .action-bar { position: sticky; bottom: 0; margin: 1rem -1rem 0;
+                  padding: .5rem 1rem; background: rgba(255, 255, 255, .97);
+                  border-top: 2px solid #e3e3e3;
+                  box-shadow: 0 -2px 8px rgba(0, 0, 0, .07); z-index: 5; }
     .buttons { margin: .5rem 0; }
+    .action-bar .buttons { margin: 0; display: flex; flex-wrap: wrap;
+                           align-items: center; gap: .5rem; }
+    .action-bar .buttons button { margin: 0; }
+    .format-on-check { font-size: .85rem; color: #555; cursor: pointer;
+                       margin-left: auto; user-select: none; }
     .actions { margin: .3rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
     /* Primary (Check) / secondary (Reset) hierarchy for the main actions. */

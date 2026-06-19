@@ -1157,6 +1157,7 @@ puzzleSlotView m sid ix z =
   ]
   <> body
   <> [ advanceView m solvedAccepted, navBar m ]
+  <> [ actionBar m | not locked ]   -- the controls, as a sticky footer bar
   where
     lvl       = puzzleLevel z
     locked    = levelLocked slots (m ^. solved) (m ^. unlocked) (m ^. pretest) z
@@ -1180,18 +1181,6 @@ puzzleSlotView m sid ix z =
              , H.h3_ [] [ text "Moves" ]
              , movesView m
              , inventoryView lvl
-             , H.div_ [ P.class_ "buttons" ]
-                 [ H.button_ [ P.class_ "primary", H.onClick Check ] [ text "Check" ]
-                 , H.button_ [ P.class_ "secondary", H.onClick Format ] [ text "Format" ]
-                 , H.button_ ( [ P.class_ "secondary", H.onClick Undo ]
-                                 <> [ P.disabled_ | null (m ^. history) ] )
-                     [ text "Undo" ]
-                 , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
-                 ]
-             , H.label_ [ P.class_ "format-on-check" ]
-                 [ H.input_ [ P.type_ "checkbox", P.checked_ (m ^. formatOnCheck)
-                            , H.onChecked (\(Checked b) -> SetFormatOnCheck b) ]
-                 , text " Format on check" ]
              , H.h3_ [] [ text "Result" ]
              -- A gated solve that uses ungranted lemmas is withheld: the red
              -- gate box replaces the green success box; otherwise the result
@@ -1380,6 +1369,28 @@ moveButton kind ins =
     (kindLabel, kindClass) = case kind of
       Intro -> ("intro" :: T.Text, "kind-intro" :: T.Text)
       Give  -> ("give",            "kind-give")
+
+-- | The control bar: Check / Format / Undo / Reset and the format-on-check
+-- toggle, lifted out of the Moves panel into a sticky footer pinned to the
+-- bottom of the level page, so the controls are always in the same place (muscle
+-- memory) and never blend into the variable, per-hole move buttons. The Moves
+-- panel stays in the document flow beside the goal and holes.
+actionBar :: Model -> View Model Action
+actionBar m =
+  H.div_ [ P.class_ "action-bar" ]
+    [ H.div_ [ P.class_ "buttons" ]
+        [ H.button_ [ P.class_ "primary", H.onClick Check ] [ text "Check" ]
+        , H.button_ [ P.class_ "secondary", H.onClick Format ] [ text "Format" ]
+        , H.button_ ( [ P.class_ "secondary", H.onClick Undo ]
+                        <> [ P.disabled_ | null (m ^. history) ] )
+            [ text "Undo" ]
+        , H.button_ [ P.class_ "secondary", H.onClick Reset ] [ text "Reset" ]
+        , H.label_ [ P.class_ "format-on-check" ]
+            [ H.input_ [ P.type_ "checkbox", P.checked_ (m ^. formatOnCheck)
+                       , H.onChecked (\(Checked b) -> SetFormatOnCheck b) ]
+            , text " Format on check" ]
+        ]
+    ]
 
 -- | The collapsible "Allowed here" list: the lemmas and moves the level grants,
 -- the visible reference for the inventory gate. Reuses 'levelInventory' (the
