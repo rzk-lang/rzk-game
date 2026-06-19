@@ -794,6 +794,19 @@ updateModel = \case
     pretest %= Map.insert pid ans
     pt <- use pretest
     io_ (savePretest pt)
+    -- "I already know this" satisfies the pre-test, so jump ahead to the next
+    -- unfinished step — the player expects marking familiarity to skip the
+    -- material, not to leave them on the page. "Not familiar" stays put (its
+    -- remediation box has just appeared below).
+    case ans of
+      Familiar -> do
+        cur <- use slotIx
+        sv  <- use solved
+        vw  <- use viewed
+        case nextIncompleteFrom cur sv vw pt of
+          Just j  -> issue (SelectSlot j)
+          Nothing -> pure ()
+      NotFamiliar -> pure ()
   Unlock pid -> do
     unlocked %= Set.insert pid
     u <- use unlocked
@@ -1204,6 +1217,8 @@ pretestControls m z
                 [ choice Familiar    "I already know this"
                 , choice NotFamiliar "Not familiar yet"
                 ]
+            , H.p_ [ P.class_ "pretest-note" ]
+                [ text "“I already know this” counts the pre-test as done and jumps you to the next unfinished step." ]
             ]
             <> case ans of
                  Just NotFamiliar ->
@@ -1488,14 +1503,20 @@ advanceView m accepted
 -- | The next incomplete /required/ slot, searching forward from the current one
 -- and wrapping past the end. 'Nothing' when everything required is done.
 nextIncomplete :: Model -> Maybe Int
-nextIncomplete m = find incomplete order
+nextIncomplete m =
+  nextIncompleteFrom (_slotIx m) (m ^. solved) (m ^. viewed) (m ^. pretest)
+
+-- | 'nextIncomplete' over the bare progress components, so the update function
+-- can call it without reassembling a 'Model'.
+nextIncompleteFrom
+  :: Int -> Set Int -> Set T.Text -> Map T.Text PretestAnswer -> Maybe Int
+nextIncompleteFrom cur solvedIxs viewedIds answers = find incomplete order
   where
     n     = totalSlots
-    order = [ (_slotIx m + k) `mod` n | k <- [1 .. n - 1] ]
+    order = [ (cur + k) `mod` n | k <- [1 .. n - 1] ]
     incomplete i =
       let s = slotAt i
-      in slotRequired s
-           && not (slotDone (m ^. solved) (m ^. viewed) (m ^. pretest) s)
+      in slotRequired s && not (slotDone solvedIxs viewedIds answers s)
 
 -- | A linear navigation bar over all slots: previous, the current slot's label,
 -- then next. Adjacent navigation, disabled at the ends; the picker above remains
