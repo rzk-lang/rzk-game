@@ -1407,19 +1407,18 @@ inventoryView lvl
     summary :: T.Text
     summary = if levelGated lvl then "Allowed here (gated)" else "Allowed here"
 
--- | The inventory-gate notice: the prelude lemmas used but not granted. On a
--- gated level it is a blocking red box (the proof does not count until they are
--- gone); otherwise a soft amber heads-up. Empty when there are no violations.
+-- | The inventory-gate notice: the prelude lemmas used but not granted. Shown
+-- only on a gated level, as a blocking red box (the proof does not count until
+-- they are gone). On a non-gated level the inventory is a display aid, not an
+-- enforced constraint, so an unlisted name is unavoidable noise (rzk has no
+-- implicit arguments, so a solution often must name type-formers like @hom@) —
+-- no advisory is shown. Empty when there are no violations.
 gateView :: Level -> CheckResult -> [T.Text] -> View Model Action
 gateView lvl res violations
-  | null violations = text ""
-  | levelGated lvl  =
+  | null violations || not (levelGated lvl) = text ""
+  | otherwise =
       H.div_ [ P.class_ "gate gate-hard" ]
         [ H.p_ [] [ text (ms (hardMsg <> names)) ] ]
-  | otherwise =
-      H.div_ [ P.class_ "gate gate-soft" ]
-        [ H.p_ [] [ text (ms ("Heads up — this level does not list " <> names
-                      <> " under “Allowed here”. It still counts; see if you can do without it.")) ] ]
   where
     names = T.intercalate ", " violations
     hardMsg = case res of
