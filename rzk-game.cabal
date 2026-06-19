@@ -1,9 +1,10 @@
 cabal-version: 2.2
 name:          rzk-game
-version:       0.1.0.0
+version:       0.2.0.0
 synopsis:      Engine for interactive Rzk games (miso + GHC WebAssembly backend)
 category:      Web, Math
 build-type:    Simple
+extra-doc-files: CHANGELOG.md
 
 flag interactive
   description: Enable features for interactive use (GHCi browser mode)
