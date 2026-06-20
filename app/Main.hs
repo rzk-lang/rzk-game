@@ -193,6 +193,16 @@ puzzleIndexAt i = case slotAt i of
 nthLevel :: Int -> Level
 nthLevel i = head (drop i gameLevels)
 
+-- | The stable id of the puzzle at a global puzzle index, and the inverse. These
+-- bridge the in-memory progress (still keyed by index, as the section logic
+-- expects) and its persisted form (keyed by id, so reordering levels cannot
+-- silently reassign a player's solved levels and drafts).
+puzzleIdByIx :: Int -> Maybe T.Text
+puzzleIdByIx i = puzzleId . snd <$> find ((== i) . fst) (puzzleSlots slots)
+
+puzzleIxById :: T.Text -> Maybe Int
+puzzleIxById pid = fst <$> lookupPuzzleSlot slots pid
+
 tshow :: Show a => a -> T.Text
 tshow = T.pack . show
 
@@ -480,7 +490,11 @@ hsSelftest = do
       roundTrips  = decodeSolved (encodeSolved allSolved) == allSolved
       emptyOk     = decodeSolved (encodeSolved Set.empty) == Set.empty
       junkDropped = decodeSolved "0,x,,2" == Set.fromList [0, 2]
-  putStrLn (if roundTrips && emptyOk && junkDropped
+      -- Migration: a legacy numeric ("index") value still loads, and the new
+      -- form is written as ids, not numbers.
+      legacyOk    = decodeSolved "0,2,5" == Set.fromList [0, 2, 5]
+      idFormOk    = encodeSolved (Set.fromList [0]) == ms (fromMaybe "?" (puzzleIdByIx 0))
+  putStrLn (if roundTrips && emptyOk && junkDropped && legacyOk && idFormOk
               then "progress codec: OK" else "PROGRESS CODEC FAILED")
   putStrLn "== viewed codec: encode/decode round-trips =="
   let viewedSet  = Set.fromList ["morphisms-intro", "associativity-arr-segal"]
@@ -557,15 +571,23 @@ viewedKey   = "rzk-game-viewed"
 pretestKey  = "rzk-game-pretest"
 unlockedKey = "rzk-game-unlocked"
 
--- | The solved set is stored as a comma-separated list of level indices, e.g.
--- @"0,1"@. Unparseable or out-of-range entries are dropped on load, so a stale
--- value from an older level list cannot crash the game.
+-- | The solved set is stored as a comma-separated list of puzzle /ids/, e.g.
+-- @"my-id,map-point"@, so reordering levels does not reassign saved progress.
+-- On load each token resolves to its current index; a token that is no longer a
+-- known id is dropped. For backward compatibility a purely numeric token is read
+-- as a legacy /index/, so progress saved by an older build still loads (and is
+-- rewritten in id form on the next save).
 encodeSolved :: Set Int -> MisoString
-encodeSolved = ms . T.intercalate "," . map (T.pack . show) . Set.toList
+encodeSolved = ms . T.intercalate "," . mapMaybe puzzleIdByIx . Set.toList
 
 decodeSolved :: MisoString -> Set Int
 decodeSolved =
-  Set.fromList . mapMaybe (readMaybe . T.unpack) . T.splitOn "," . fromMisoString
+  Set.fromList . mapMaybe resolve . T.splitOn "," . fromMisoString
+  where
+    resolve t
+      | T.null t                   = Nothing
+      | Just ix <- puzzleIxById t  = Just ix              -- current id form
+      | otherwise                  = readMaybe (T.unpack t) -- legacy index form
 
 -- | A set of ids (viewed prose, unlock overrides) as a comma-separated list. Ids
 -- are kebab-case and contain no commas, so the source needs no escaping.
@@ -646,22 +668,35 @@ readLoadedState = LoadedState
 
 -- | Per-level draft storage. Each puzzle's in-progress text is saved under its
 -- own key, so the raw source needs no escaping (unlike a single packed value).
--- A draft for a level no longer in the list simply lingers, harmlessly unread.
+-- The key is derived from the puzzle's stable id, so reordering levels does not
+-- mix up drafts; a draft for a level no longer in the game lingers, harmlessly
+-- unread. (If an index somehow has no id, fall back to the numeric form.)
 draftKey :: Int -> MisoString
-draftKey i = "rzk-game-draft-" <> ms (show i)
+draftKey i = "rzk-game-draft-" <> ms (fromMaybe (tshow i) (puzzleIdByIx i))
+
+-- | The pre-id draft key for a puzzle index: @rzk-game-draft-<index>@. Read as a
+-- fallback so a draft saved by an older build is not lost, and cleaned up on
+-- 'removeDraft'. No longer written.
+legacyDraftKey :: Int -> MisoString
+legacyDraftKey i = "rzk-game-draft-" <> ms (show i)
 
 saveDraft :: Int -> MisoString -> IO ()
 saveDraft i = setLocalStorage (draftKey i)
 
 removeDraft :: Int -> IO ()
-removeDraft = removeLocalStorage . draftKey
+removeDraft i = removeLocalStorage (draftKey i) >> removeLocalStorage (legacyDraftKey i)
 
 -- | Read a puzzle's saved draft, falling back to its template when none is
--- stored, and return the action that installs it. The index is carried so the
--- update can ignore a stale read after a quick navigation.
+-- stored, and return the action that installs it. The id-keyed draft is
+-- preferred; a legacy index-keyed draft is read when no id-keyed one exists, so
+-- progress from an older build survives (and migrates to the id key on the next
+-- save). The index is carried so the update can ignore a stale read after a
+-- quick navigation.
 loadDraftAction :: Int -> IO Action
-loadDraftAction i =
-  ApplyText i . fromMaybe (ms (levelTemplate (nthLevel i))) <$> getLocalStorage (draftKey i)
+loadDraftAction i = do
+  saved <- getLocalStorage (draftKey i)
+  legacy <- maybe (getLocalStorage (legacyDraftKey i)) (pure . Just) saved
+  pure (ApplyText i (fromMaybe (ms (levelTemplate (nthLevel i))) legacy))
 
 -- Progress export / import / reset ------------------------------------------
 
@@ -672,7 +707,7 @@ loadDraftAction i =
 playerDataKeys :: [MisoString]
 playerDataKeys =
   [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey]
-    ++ [ draftKey i | i <- [0 .. length gameLevels - 1] ]
+    ++ [ k | i <- [0 .. length gameLevels - 1], k <- [draftKey i, legacyDraftKey i] ]
 
 -- | Whether a key from an imported archive is player data we will restore. The
 -- four fixed keys, plus any per-level draft (accepted even for an index beyond
