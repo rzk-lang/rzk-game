@@ -1435,6 +1435,15 @@ else {
 ZC7ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1,$2) => {if ($1 === $2) return 0;
 else if ($1 > $2) return 1;
 else return -1;},
+ZC8ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => {return $1.slice(1,$1.length)},
+ZC9ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => {if ($1.length === 0) throw new Error ('head: empty string');
+return $1.slice(0).charCodeAt();},
+ZC10ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => {return String.fromCharCode($1);},
+ZC11ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1,$2) => {return $2.startsWith($1)},
+ZC12ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => {return $1.length},
+ZC13ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1,$2) => {if ($1 < 1 || $2.length === 0) return $2;
+return $2.slice($1, $2.length);},
+ZC14ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => {return $1.length === 0},
 ZC15ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1,$2) => ((new TextDecoder('utf-8', {fatal: true})).decode(new Uint8Array(__exports.memory.buffer, $1, $2))),
 ZC16ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1,$2) => ((new Uint8Array(__exports.memory.buffer, $2, $1.byteLength)).set($1)),
 ZC17ZCmisozm1zi11zi0zi0zmfe7dfb99365ad49b77acca0ed66be1e7dc8fd16eec3cffbfe6ba2d13f04c3101ZCDataziJSStringZC: ($1) => ($1.byteLength),
