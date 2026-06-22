@@ -220,6 +220,18 @@ main = do
     (inventoryViolations ws ungranted == ["comp-is-segal"])
   check "type formers in the goal signature are not flagged"
     (null (inventoryViolations ws (levelTemplate ws)))
+  -- The allow-list is extended with the reference solution's own names: drop the
+  -- lemma the solution needs from the declared inventory, and its solution stays
+  -- clean (the solution's use re-grants it), while a genuinely extraneous lemma
+  -- is still flagged. So the soft notice only ever points at a name the intended
+  -- solution does without.
+  let wsBare = ws { levelInventory =
+                      filter (not . T.isPrefixOf "witness-comp-is-segal")
+                             (levelInventory ws) }
+  check "a lemma the solution uses is not flagged even when ungranted"
+    (null (inventoryViolations wsBare (levelSolution wsBare)))
+  check "an extraneous lemma is still flagged after the extension"
+    (inventoryViolations wsBare ungranted == ["comp-is-segal"])
   check "the gated level is actually gated" (levelGated ws)
   check "gatePassed holds on the gated level's clean solution"
     (gatePassed ws (levelSolution ws))

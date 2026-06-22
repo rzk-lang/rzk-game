@@ -1482,9 +1482,13 @@ inventoryView lvl
     summary :: T.Text
     summary = if levelGated lvl then "Allowed here (gated)" else "Allowed here"
 
--- | The inventory-gate notice: the prelude lemmas used but not granted. On a
--- gated level it is a blocking red box (the proof does not count until they are
--- gone); otherwise a soft amber heads-up. Empty when there are no violations.
+-- | The inventory-gate notice: the prelude lemmas the proof uses that are
+-- neither granted nor needed by the intended solution (see 'inventoryViolations',
+-- whose allow-list is extended with the reference solution's names — so this
+-- never fires on a lemma the solution itself must name). On a gated level it is a
+-- blocking red box (the proof does not count until they are gone). On a non-gated
+-- level it is a soft hint: the proof still counts, but the intended solution does
+-- without these, so a shorter route exists. Empty when there are no violations.
 gateView :: Level -> CheckResult -> [T.Text] -> View Model Action
 gateView lvl res violations
   | null violations = text ""
@@ -1493,8 +1497,8 @@ gateView lvl res violations
         [ H.p_ [] [ text (ms (hardMsg <> names)) ] ]
   | otherwise =
       H.div_ [ P.class_ "gate gate-soft" ]
-        [ H.p_ [] [ text (ms ("Heads up — this level does not list " <> names
-                      <> " under \x201cAllowed here\x201d. It still counts; see if you can do without it.")) ] ]
+        [ H.p_ [] [ text (ms ("Heads up — the intended solution does not use " <> names
+                      <> ". Your proof still counts, but there is a shorter route without it.")) ] ]
   where
     names = T.intercalate ", " violations
     hardMsg = case res of

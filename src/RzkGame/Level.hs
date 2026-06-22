@@ -178,9 +178,16 @@ tshow = T.pack . show
 --
 -- We intersect three name sets: the names the prelude /defines/
 -- ('preludeDefinedNames', the @#def@/@#postulate@ heads), the names the editable
--- proof /references/ ('referencedNames'), and the level's allow-list (the
--- leading token of each 'levelInventory' entry). A name that is prelude-defined
--- and used but not granted is a violation.
+-- proof /references/ ('referencedNames'), and the level's allow-list. A name
+-- that is prelude-defined and used but not allowed is a violation.
+--
+-- The allow-list is the leading token of each 'levelInventory' entry, /extended/
+-- with the names the reference solution itself uses. This keeps a violation to a
+-- name the intended solution does without: a lemma the solution legitimately
+-- needs (e.g. a type-former passed as an explicit argument, since rzk has no
+-- implicit arguments) is never flagged, while a genuinely extraneous lemma still
+-- is. So the soft notice reads as a real hint — "the intended solution does not
+-- need this" — rather than firing on unavoidable names.
 --
 -- Two deliberate restrictions keep a violation to a /real/ prelude lemma. First,
 -- only the proof /bodies/ are scanned (the text after each @:=@), never the type
@@ -198,6 +205,7 @@ inventoryViolations lvl editable
   where
     defined = preludeDefinedNames (levelPrelude lvl)
     allowed = mapMaybe firstToken (levelInventory lvl)
+                ++ referencedNames (levelSolution lvl)
     firstToken e = case T.words e of (n : _) -> Just n; [] -> Nothing
 
 -- | The names a prelude /defines/: the first word after each @#def@ or
