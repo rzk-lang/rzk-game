@@ -56,7 +56,10 @@ gameSlots = slotsOfSections gameSections
 -- mid-section aside (the associativity preview).
 gameSections :: [Section]
 gameSections =
-  [ Section "morphisms" "Morphisms and triangles"
+  [ Section "getting-started" "Getting started"
+      [ SProse  proseHolesHelp
+      ]
+  , Section "morphisms" "Morphisms and triangles"
       [ SProse  proseMorphismsIntro
       , SPuzzle (core  "my-id"          idMorphismLevel)
       , SPuzzle (core  "const-triangle" constTriangleLevel)
@@ -118,6 +121,36 @@ functionsRemedy =
 
 -- | Section prose (Markdown + TeX, rendered by @prose.js@). Backslashes are
 -- doubled for Haskell; @\\n\\n@ separates paragraphs.
+-- | The standalone "how holes work" onboarding page (item A4/N3). Placed first,
+-- in its own "Getting started" section, and linked from every page via the
+-- persistent help link in 'navHeader' (which keys off the @how-holes-work@ id).
+proseHolesHelp :: Prose
+proseHolesHelp = Prose "how-holes-work" "How holes work" Nothing $ T.concat
+  [ "You play this game by filling **holes**. A hole is written `?`. It marks "
+  , "an unfilled part of a proof. Wherever you leave a `?`, the game works out "
+  , "what belongs there and shows it to you.\n\n"
+  , "**The focused hole.** The first hole in a proof is *focused*. Its **goal** "
+  , "and **context** appear beside the editor. The goal is the type the hole "
+  , "must have. The context lists the term variables, cube variables, and tope "
+  , "assumptions in scope there. You fill the goal using what the context gives "
+  , "you.\n\n"
+  , "**Moves.** The **Moves** panel offers tap-to-fill steps for the focused "
+  , "hole. Each step is read from the goal's type, not guessed. There are two "
+  , "kinds. An *introduction* builds a value of the goal from its shape: a "
+  , "$\\lambda$ for a function, a pair for a $\\Sigma$, `refl` for a reflexive "
+  , "path, or a tope constructor. A *give* applies something already in scope, "
+  , "such as a hypothesis or a lemma the level grants. It leaves fresh holes for "
+  , "the arguments.\n\n"
+  , "Tapping a move drops it onto the focused hole. Any holes it introduces "
+  , "become the next ones to fill. You can also type into the editor directly."
+  , "\n\n"
+  , "**Check, Format, Undo.** **Check** type-checks your proof and refreshes "
+  , "the holes. **Format** tidies your text into rzk's canonical layout. "
+  , "**Undo** steps back through your edits, including tapped moves.\n\n"
+  , "A level is solved when the editor type-checks with **no holes left** and "
+  , "the goal has the required type."
+  ]
+
 proseMorphismsIntro :: Prose
 proseMorphismsIntro = Prose "morphisms-intro" "Start here" (Just BridgeIn) $ T.concat
   [ "In directed type theory a **morphism** $x \\to y$ is a path along the "
