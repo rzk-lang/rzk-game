@@ -1,89 +1,92 @@
-sections:
-- id: getting-started
-  items:
-  - prose:
-      file: levels/how-holes-work.md
-  title: Getting started
-- id: morphisms
-  items:
-  - prose:
-      file: levels/morphisms-intro.md
-  - puzzle:
-      file: levels/my-id.rzk.md
-  - puzzle:
-      file: levels/const-triangle.rzk.md
-  - puzzle:
-      file: levels/rut.rzk.md
-  - puzzle:
-      file: levels/lut.rzk.md
-      role: extra
-  - prose:
-      file: levels/morphisms-summary.md
-  title: Morphisms and triangles
-- id: functions
-  items:
-  - prose:
-      file: levels/functions-intro.md
-  - puzzle:
-      file: levels/map-point.rzk.md
-      remedies:
-      - label: 'Review: Morphisms and triangles'
-        section: morphisms
-      - label: 'sHoTT: the Segal-types chapter'
-        url: https://rzk-lang.github.io/sHoTT/simplicial-hott/05-segal-types.rzk/
-      role: pretest
-  - puzzle:
-      file: levels/ap-hom.rzk.md
-      prereqs:
-      - map-point
-  - prose:
-      file: levels/functions-summary.md
-  title: Functions act on cells
-- id: composition
-  items:
-  - prose:
-      file: levels/composition-intro.md
-  - puzzle:
-      file: levels/compose.rzk.md
-  - puzzle:
-      file: levels/compose-witness.rzk.md
-      prereqs:
-      - compose
-  - prose:
-      file: levels/composition-summary.md
-  title: Composition in Segal types
-- id: associativity
-  items:
-  - prose:
-      file: levels/associativity-intro.md
-  - puzzle:
-      file: levels/unfolding-square.rzk.md
-  - puzzle:
-      file: levels/witness-square-comp-is-segal.rzk.md
-      prereqs:
-      - compose-witness
-  - puzzle:
-      file: levels/id-arr-in-arr.rzk.md
-  - puzzle:
-      file: levels/arr-in-arr-is-segal.rzk.md
-      prereqs:
-      - compose-witness
-  - prose:
-      file: levels/associativity-arr-segal.md
-  - puzzle:
-      file: levels/witness-associative-is-segal.rzk.md
-      prereqs:
-      - compose-witness
-      role: extra
-  - puzzle:
-      file: levels/tetrahedron-associative-is-segal.rzk.md
-      prereqs:
-      - compose-witness
-  - puzzle:
-      file: levels/triple-comp-is-segal.rzk.md
-      prereqs:
-      - compose-witness
-  - prose:
-      file: levels/associativity-summary.md
-  title: Associativity in Segal types
 title: Rzk Game
+chapters:
+- sections:
+  - id: getting-started
+    items:
+    - prose:
+        file: levels/how-holes-work.md
+    title: Getting started
+- title: Directed type theory
+  sections:
+  - id: morphisms
+    items:
+    - prose:
+        file: levels/morphisms-intro.md
+    - puzzle:
+        file: levels/my-id.rzk.md
+    - puzzle:
+        file: levels/const-triangle.rzk.md
+    - puzzle:
+        file: levels/rut.rzk.md
+    - puzzle:
+        file: levels/lut.rzk.md
+        role: extra
+    - prose:
+        file: levels/morphisms-summary.md
+    title: Morphisms and triangles
+  - id: functions
+    items:
+    - prose:
+        file: levels/functions-intro.md
+    - puzzle:
+        file: levels/map-point.rzk.md
+        remedies:
+        - label: 'Review: Morphisms and triangles'
+          section: morphisms
+        - label: 'sHoTT: the Segal-types chapter'
+          url: https://rzk-lang.github.io/sHoTT/simplicial-hott/05-segal-types.rzk/
+        role: pretest
+    - puzzle:
+        file: levels/ap-hom.rzk.md
+        prereqs:
+        - map-point
+    - prose:
+        file: levels/functions-summary.md
+    title: Functions act on cells
+  - id: composition
+    items:
+    - prose:
+        file: levels/composition-intro.md
+    - puzzle:
+        file: levels/compose.rzk.md
+    - puzzle:
+        file: levels/compose-witness.rzk.md
+        prereqs:
+        - compose
+    - prose:
+        file: levels/composition-summary.md
+    title: Composition in Segal types
+  - id: associativity
+    items:
+    - prose:
+        file: levels/associativity-intro.md
+    - puzzle:
+        file: levels/unfolding-square.rzk.md
+    - puzzle:
+        file: levels/witness-square-comp-is-segal.rzk.md
+        prereqs:
+        - compose-witness
+    - puzzle:
+        file: levels/id-arr-in-arr.rzk.md
+    - puzzle:
+        file: levels/arr-in-arr-is-segal.rzk.md
+        prereqs:
+        - compose-witness
+    - prose:
+        file: levels/associativity-arr-segal.md
+    - puzzle:
+        file: levels/witness-associative-is-segal.rzk.md
+        prereqs:
+        - compose-witness
+        role: extra
+    - puzzle:
+        file: levels/tetrahedron-associative-is-segal.rzk.md
+        prereqs:
+        - compose-witness
+    - puzzle:
+        file: levels/triple-comp-is-segal.rzk.md
+        prereqs:
+        - compose-witness
+    - prose:
+        file: levels/associativity-summary.md
+    title: Associativity in Segal types

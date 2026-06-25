@@ -8,6 +8,7 @@
 -- index-keyed progress and drafts stay compatible.
 module RzkGame.Content
   ( gameLevels
+  , gameChapters
   , gameSections
   , gameSlots
   , idMorphismLevel
@@ -49,54 +50,76 @@ gameLevels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems gameSections 
 gameSlots :: [Slot]
 gameSlots = slotsOfSections gameSections
 
--- | The game's BOPPPS-style modules. BOPPPS structure is recommended, not
--- mandatory: prose blocks carry an optional role tag and may sit anywhere. The
--- three sections demonstrate the mechanics — a starred extra (the left-unit
--- triangle), a pre-test that gates a dependent level (functions on cells), and a
--- mid-section aside (the associativity preview).
+-- | The flattened sections, derived from the chapters. Slots, locking, and
+-- progress all consume this, unchanged by the chapter grouping.
 gameSections :: [Section]
-gameSections =
-  [ Section "getting-started" "Getting started"
-      [ SProse  proseHolesHelp
-      ]
-  , Section "morphisms" "Morphisms and triangles"
-      [ SProse  proseMorphismsIntro
-      , SPuzzle (core  "my-id"          idMorphismLevel)
-      , SPuzzle (core  "const-triangle" constTriangleLevel)
-      , SPuzzle (core  "rut"            hom2Level)
-      , SPuzzle (extra "lut"            homLeftUnitLevel)
-      , SProse  proseMorphismsSummary
-      ]
-  , Section "functions" "Functions act on cells"
-      [ SProse  proseFunctionsIntro
-      , SPuzzle (pretest "map-point" mapPointLevel functionsRemedy)
-      , SPuzzle ((core "ap-hom" apHomLevel) { puzzlePrereqs = ["map-point"] })
-      , SProse  proseFunctionsSummary
-      ]
-  , Section "composition" "Composition in Segal types"
-      [ SProse  proseCompositionIntro
-      , SPuzzle (core "compose" composeLevel)
-      , SPuzzle ((core "compose-witness" composeWitnessLevel)
-                   { puzzlePrereqs = ["compose"] })
-      , SProse  proseCompositionSummary
-      ]
-  , Section "associativity" "Associativity in Segal types"
-      [ SProse  proseAssociativityIntro
-      , SPuzzle (core "unfolding-square" unfoldingSquareLevel)
-      , SPuzzle ((core "witness-square-comp-is-segal" witnessSquareLevel)
-                   { puzzlePrereqs = ["compose-witness"] })
-      , SPuzzle (core "id-arr-in-arr" idArrLevel)
-      , SPuzzle ((core "arr-in-arr-is-segal" arrInArrLevel)
-                   { puzzlePrereqs = ["compose-witness"] })
-      , SProse  proseArrIsSegalNote
-      , SPuzzle ((extra "witness-associative-is-segal" witnessAssocLevel)
-                   { puzzlePrereqs = ["compose-witness"] })
-      , SPuzzle ((core "tetrahedron-associative-is-segal" tetrahedronLevel)
-                   { puzzlePrereqs = ["compose-witness"] })
-      , SPuzzle ((core "triple-comp-is-segal" tripleCompLevel)
-                   { puzzlePrereqs = ["compose-witness"] })
-      , SProse  proseAssociativitySummary
-      ]
+gameSections = chaptersSections gameChapters
+
+-- | The game's chapters: the top grouping in the picker. An untitled onboarding
+-- chapter (just the hole-help page, so it renders top-level), then the
+-- directed-type-theory chapter that gathers the four content sections under one
+-- heading.
+gameChapters :: [Chapter]
+gameChapters =
+  [ Chapter Nothing [ gettingStartedSection ]
+  , Chapter (Just "Directed type theory")
+      [ morphismsSection, functionsSection, compositionSection, associativitySection ]
+  ]
+
+-- | The onboarding section: the standalone "how holes work" page.
+gettingStartedSection :: Section
+gettingStartedSection = Section "getting-started" "Getting started"
+  [ SProse proseHolesHelp ]
+
+-- The directed-type-theory sections. BOPPPS structure is recommended, not
+-- mandatory: prose blocks carry an optional role tag and may sit anywhere. They
+-- demonstrate the mechanics — a starred extra (the left-unit triangle), a
+-- pre-test that gates a dependent level (functions on cells), and a mid-section
+-- aside (the associativity preview).
+morphismsSection :: Section
+morphismsSection = Section "morphisms" "Morphisms and triangles"
+  [ SProse  proseMorphismsIntro
+  , SPuzzle (core  "my-id"          idMorphismLevel)
+  , SPuzzle (core  "const-triangle" constTriangleLevel)
+  , SPuzzle (core  "rut"            hom2Level)
+  , SPuzzle (extra "lut"            homLeftUnitLevel)
+  , SProse  proseMorphismsSummary
+  ]
+
+functionsSection :: Section
+functionsSection = Section "functions" "Functions act on cells"
+  [ SProse  proseFunctionsIntro
+  , SPuzzle (pretest "map-point" mapPointLevel functionsRemedy)
+  , SPuzzle ((core "ap-hom" apHomLevel) { puzzlePrereqs = ["map-point"] })
+  , SProse  proseFunctionsSummary
+  ]
+
+compositionSection :: Section
+compositionSection = Section "composition" "Composition in Segal types"
+  [ SProse  proseCompositionIntro
+  , SPuzzle (core "compose" composeLevel)
+  , SPuzzle ((core "compose-witness" composeWitnessLevel)
+               { puzzlePrereqs = ["compose"] })
+  , SProse  proseCompositionSummary
+  ]
+
+associativitySection :: Section
+associativitySection = Section "associativity" "Associativity in Segal types"
+  [ SProse  proseAssociativityIntro
+  , SPuzzle (core "unfolding-square" unfoldingSquareLevel)
+  , SPuzzle ((core "witness-square-comp-is-segal" witnessSquareLevel)
+               { puzzlePrereqs = ["compose-witness"] })
+  , SPuzzle (core "id-arr-in-arr" idArrLevel)
+  , SPuzzle ((core "arr-in-arr-is-segal" arrInArrLevel)
+               { puzzlePrereqs = ["compose-witness"] })
+  , SProse  proseArrIsSegalNote
+  , SPuzzle ((extra "witness-associative-is-segal" witnessAssocLevel)
+               { puzzlePrereqs = ["compose-witness"] })
+  , SPuzzle ((core "tetrahedron-associative-is-segal" tetrahedronLevel)
+               { puzzlePrereqs = ["compose-witness"] })
+  , SPuzzle ((core "triple-comp-is-segal" tripleCompLevel)
+               { puzzlePrereqs = ["compose-witness"] })
+  , SProse  proseAssociativitySummary
   ]
 
 -- | Smart constructors for the common puzzle roles, so the section list above

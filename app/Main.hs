@@ -68,30 +68,32 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- 'main' (or a test entry point) from the result of 'loadGame', then threaded
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
-  { envSections :: [Section]
+  { envChapters :: [Chapter]
+  , envSections :: [Section]
   , envSlots    :: [Slot]
   , envLevels   :: [Level]
   }
 
-mkGameEnv :: [Section] -> GameEnv
-mkGameEnv secs = GameEnv secs (slotsOfSections secs)
+mkGameEnv :: [Chapter] -> GameEnv
+mkGameEnv chapters = GameEnv chapters secs (slotsOfSections secs)
   [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
+  where secs = chaptersSections chapters
 
 -- | @localStorage@ key under which @index.js@ stashes the fetched @game.json@.
 gameJsonKey :: MisoString
 gameJsonKey = "rzk-game-json"
 
--- | Read the stashed @game.json@, build the sections, and return them. Any
+-- | Read the stashed @game.json@, build the chapters, and return them. Any
 -- failure (no bundle, malformed JSON, empty game) returns the built-in fallback.
-loadGame :: IO [Section]
+loadGame :: IO [Chapter]
 loadGame = do
   mjson <- getLocalStorage gameJsonKey
   case mjson of
     Just s
       | let t = fromMisoString s, not (T.null t)
-      , Right secs <- buildGame (encodeUtf8 t)
-      , not (null secs) -> pure secs
-    _ -> pure Content.gameSections
+      , Right chapters <- buildGame (encodeUtf8 t)
+      , not (null chapters) -> pure chapters
+    _ -> pure Content.gameChapters
 
 -- | UI state. The current position is a /slot/ index; solved puzzles, viewed
 -- prose, pre-test answers, and unlock overrides are persisted to @localStorage@.
@@ -214,8 +216,8 @@ data Action
 
 main :: IO ()
 main = do
-  secs         <- loadGame
-  let env       = mkGameEnv secs
+  chapters     <- loadGame
+  let env       = mkGameEnv chapters
   importResult <- applyPendingImport env
 #ifdef INTERACTIVE
   live defaultEvents (mkApp env importResult)
@@ -238,8 +240,9 @@ foreign export javascript "hs_progresscheck" hsProgressCheck :: IO ()
 -- cannot: 'getLocalStorage' → 'buildGame' → 'checkLevel'.
 hsGameCheck :: IO ()
 hsGameCheck = do
-  secs <- loadGame
-  let env  = mkGameEnv secs
+  chapters <- loadGame
+  let env  = mkGameEnv chapters
+      secs = envSections env
       lvls = envLevels env
   putStrLn ("loaded sections: " <> show (length secs))
   mapM_ (\s -> putStrLn ("  section: " <> T.unpack (sectionTitle s)
@@ -271,8 +274,8 @@ hsGameCheck = do
 -- wrong-version archive is rejected and changes nothing.
 hsProgressCheck :: IO ()
 hsProgressCheck = do
-  secs <- loadGame
-  let env = mkGameEnv secs
+  chapters <- loadGame
+  let env = mkGameEnv chapters
   -- Seed a representative slice of player data.
   setLocalStorage progressKey      "0,2,5"
   setLocalStorage viewedKey        "morphisms-intro,functions-intro"
@@ -316,7 +319,7 @@ hsSelftest :: IO ()
 hsSelftest = do
   -- The self-test exercises the full built-in game (15 levels, fixed ids and
   -- order), independent of whatever game.json a build happens to load.
-  let env          = mkGameEnv Content.gameSections
+  let env          = mkGameEnv Content.gameChapters
       gameLevels   = envLevels   env
       gameSections = envSections env
       slots        = envSlots    env
@@ -1075,15 +1078,22 @@ helpAnchor = "how-holes-work"
 sectionTitleOf :: GameEnv -> T.Text -> T.Text
 sectionTitleOf env sid = maybe "" sectionTitle (find ((== sid) . sectionId) (envSections env))
 
--- | The grouped level map: each section is a titled block with its progress count
--- and a row of slot buttons. Shown only when the map is open. Navigation stays
--- free — every slot is always reachable; locking only affects a puzzle page.
+-- | The grouped level map: chapters group their sections under a heading (an
+-- untitled chapter renders its sections top-level), each section a titled block
+-- with its progress count and a row of slot buttons. Shown only when the map is
+-- open. Navigation stays free — every slot is always reachable; locking only
+-- affects a puzzle page.
 levelMap :: GameEnv -> Model -> View Model Action
 levelMap env m =
   H.div_ [ P.class_ "sections" ]
-    (map sectionBlock (envSections env) ++ [ progressControls m ])
+    (concatMap chapterBlock (envChapters env) ++ [ progressControls m ])
   where
     indexed = zip [0 ..] (envSlots env)
+    -- A chapter: its heading (when titled) followed by its section blocks.
+    chapterBlock ch =
+      maybe [] (\c -> [ H.h2_ [ P.class_ "chapter-head" ] [ text (ms c) ] ])
+            (chapterTitle ch)
+        ++ map sectionBlock (chapterSections ch)
     sectionBlock sec =
       let sid       = sectionId sec
           mine      = [ (i, s) | (i, s) <- indexed, slotSectionId s == sid ]

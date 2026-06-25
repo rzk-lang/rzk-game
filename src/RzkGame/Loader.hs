@@ -38,10 +38,14 @@ import           RzkGame.Spec
 -- — inlined by path. We resolve each item's @file@ against that map, read its
 -- metadata and prose, split the puzzle body into prelude/template/solution,
 -- recover the goal from the template, and add the placement metadata.
-buildGame :: ByteString -> Either Text [Section]
+buildGame :: ByteString -> Either Text [Chapter]
 buildGame bs = do
   bundle <- first (("game.json: " <>) . T.pack) (eitherDecodeStrict' bs)
-  traverse (sectionFrom (bundleFiles bundle)) (gsSections (bundleConfig bundle))
+  traverse (chapterFrom (bundleFiles bundle)) (gsChapters (bundleConfig bundle))
+
+chapterFrom :: Map Text FileSpec -> ChapterSpec -> Either Text Chapter
+chapterFrom files c =
+  Chapter (csTitle c) <$> traverse (sectionFrom files) (csSections c)
 
 sectionFrom :: Map Text FileSpec -> SectionSpec -> Either Text Section
 sectionFrom files s = do

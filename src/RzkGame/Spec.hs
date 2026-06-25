@@ -22,6 +22,7 @@ module RzkGame.Spec
   ( -- * Bundle and table of contents
     Bundle (..)
   , GameSpec (..)
+  , ChapterSpec (..)
   , SectionSpec (..)
   , ItemSpec (..)
   , ProseRef (..)
@@ -62,15 +63,28 @@ instance FromJSON Bundle where
     <$> o .: "config"
     <*> o .:? "files" .!= mempty
 
--- | The table of contents (the @game.yaml@): a title and the ordered sections.
+-- | The table of contents (the @game.yaml@): a title and the ordered chapters.
 data GameSpec = GameSpec
   { gsTitle    :: Text
-  , gsSections :: [SectionSpec]
+  , gsChapters :: [ChapterSpec]
   } deriving (Eq, Show)
 
 instance FromJSON GameSpec where
   parseJSON = withObject "GameSpec" $ \o -> GameSpec
     <$> o .:? "title" .!= ""
+    <*> o .:? "chapters" .!= []
+
+-- | A chapter: an optional title grouping a run of sections. The top level of a
+-- @game.yaml@ is a list of these; an untitled chapter renders its sections with
+-- no heading (a "top-level" group).
+data ChapterSpec = ChapterSpec
+  { csTitle    :: Maybe Text
+  , csSections :: [SectionSpec]
+  } deriving (Eq, Show)
+
+instance FromJSON ChapterSpec where
+  parseJSON = withObject "ChapterSpec" $ \o -> ChapterSpec
+    <$> o .:? "title"
     <*> o .:? "sections" .!= []
 
 -- | A section (a BOPPPS-style world): an id, a title, and ordered items.

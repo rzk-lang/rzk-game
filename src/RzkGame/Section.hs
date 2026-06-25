@@ -16,7 +16,9 @@
 -- flattening, locking, and progress logic can be exercised headlessly.
 module RzkGame.Section
   ( -- * Model
-    Section (..)
+    Chapter (..)
+  , chaptersSections
+  , Section (..)
   , SectionItem (..)
   , Prose (..)
   , Boppps (..)
@@ -113,6 +115,20 @@ data Section = Section
   , sectionTitle :: Text
   , sectionItems :: [SectionItem]
   } deriving (Eq, Show)
+
+-- | A chapter: the top grouping in the picker, an (optionally titled) run of
+-- sections. A chapter with no title renders its sections without a heading, so a
+-- "top-level" section is just an untitled chapter. The flattened @['Section']@
+-- the rest of the engine consumes (slots, locking, progress) is the
+-- concatenation of every chapter's sections, so nothing downstream changes.
+data Chapter = Chapter
+  { chapterTitle    :: Maybe Text
+  , chapterSections :: [Section]
+  } deriving (Eq, Show)
+
+-- | Every section, flattened across chapters, in author order.
+chaptersSections :: [Chapter] -> [Section]
+chaptersSections = concatMap chapterSections
 
 -- | A player's self-assessment on a pre-test.
 data PretestAnswer = Familiar | NotFamiliar

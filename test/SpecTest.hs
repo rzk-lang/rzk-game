@@ -22,7 +22,7 @@ import qualified Data.Text            as T
 import           System.Exit          (exitFailure)
 import           Data.IORef
 
-import           RzkGame.Content      (gameLevels, gameSections)
+import           RzkGame.Content      (gameLevels, gameChapters)
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
@@ -93,18 +93,18 @@ main = do
   --    readers across all 15 levels (the associativity ones have display blocks
   --    in their intros and long stacked preludes).
   putStrLn "== buildGame: the whole game round-trips through a JSON bundle =="
-  case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameSections))) of
+  case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameChapters))) of
     Left err   -> check ("buildGame error: " <> T.unpack err) False
-    Right secs -> do
-      check "round-trips to all sections" (length secs == length gameSections)
-      check "sections equal RzkGame.Content" (secs == gameSections)
+    Right chs  -> do
+      check "round-trips to all chapters" (length chs == length gameChapters)
+      check "chapters equal RzkGame.Content" (chs == gameChapters)
 
   -- 4. Every loaded level actually plays: its template has holes, its reference
   --    solution solves. This runs the real rzk type-checker on the loaded model.
   putStrLn "== play: every loaded level holes on its template and solves =="
-  case buildGame (BL.toStrict (encode (bundleFor "Play" gameSections))) of
+  case buildGame (BL.toStrict (encode (bundleFor "Play" gameChapters))) of
     Left err   -> check ("buildGame error: " <> T.unpack err) False
-    Right secs -> flip mapM_ (loadedLevels secs) $ \lvl -> do
+    Right chs  -> flip mapM_ (loadedLevels chs) $ \lvl -> do
       check (T.unpack (levelTitle lvl) <> ": template holes")
             (isHoles (checkLevel lvl (levelTemplate lvl)))
       check (T.unpack (levelTitle lvl) <> ": solution solves")
@@ -119,7 +119,7 @@ main = do
     Left _     -> putStrLn "skip - public/game.json not found (run `make bundle`)"
     Right json -> case buildGame json of
       Left err   -> check ("buildGame on public/game.json: " <> T.unpack err) False
-      Right secs -> check "bundled sections equal RzkGame.Content" (secs == gameSections)
+      Right chs  -> check "bundled chapters equal RzkGame.Content" (chs == gameChapters)
 
   -- 6. The progress-archive codec round-trips, rejects an unknown version, and
   --    drops non-string ("junk") values. Order is not significant, so compare
@@ -330,8 +330,9 @@ main = do
     else putStrLn ("\n" <> show n <> " test(s) FAILED.") >> exitFailure
 
 -- | The puzzle levels of a loaded section list, in order.
-loadedLevels :: [Section] -> [Level]
-loadedLevels secs = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
+loadedLevels :: [Chapter] -> [Level]
+loadedLevels chs =
+  [ puzzleLevel z | SPuzzle z <- concatMap sectionItems (chaptersSections chs) ]
 
 isHoles :: CheckResult -> Bool
 isHoles (Holes _) = True
@@ -375,11 +376,17 @@ sampleBody = T.unlines
 -- item's table-of-contents reference and its inlined file (front-matter @meta@ +
 -- Markdown @body@). This is the inverse of the loader, so a test can round-trip
 -- the built-in model through 'buildGame' without hand-writing JSON literals.
-bundleFor :: Text -> [Section] -> Value
-bundleFor title secs = object
-  [ "config" .= object [ "title" .= title, "sections" .= map sectionV secs ]
+bundleFor :: Text -> [Chapter] -> Value
+bundleFor title chs = object
+  [ "config" .= object [ "title" .= title, "chapters" .= map chapterV chs ]
   , "files"  .= object [ Key.fromText (refPath it) .= fileV it
-                       | s <- secs, it <- sectionItems s ]
+                       | s <- chaptersSections chs, it <- sectionItems s ]
+  ]
+
+chapterV :: Chapter -> Value
+chapterV c = object
+  [ "title"    .= chapterTitle c
+  , "sections" .= map sectionV (chapterSections c)
   ]
 
 sectionV :: Section -> Value
