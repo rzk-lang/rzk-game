@@ -1,4 +1,9 @@
 sections:
+- id: getting-started
+  items:
+  - prose:
+      file: levels/how-holes-work.md
+  title: Getting started
 - id: morphisms
   items:
   - prose:

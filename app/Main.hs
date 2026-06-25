@@ -1029,6 +1029,7 @@ navHeader env m =
             [ text (ms (sectionTitleOf env (slotSectionId (currentSlot env m)))) ]
         , H.span_ [ P.class_ (ms (progCls :: T.Text)) ]
             [ text (ms (tshow done <> " / " <> tshow total)) ]
+        , helpLink env
         ]
     , if open then levelMap env m else text ""
     ]
@@ -1036,6 +1037,22 @@ navHeader env m =
     open          = m ^. mapOpen
     (done, total) = overallProgress env m
     progCls       = "mapbar-progress" <> if done == total && total > 0 then " done" else ""
+
+-- | The persistent "How holes work" link (item A3). Shown only when the loaded
+-- game has a prose page with the 'helpAnchor' id, so the engine carries no hard
+-- dependency on any one game's content: a game without that page simply has no
+-- link. Clicking it jumps to the page like any other slot.
+helpLink :: GameEnv -> View Model Action
+helpLink env = case anchorSlotIx env helpAnchor of
+  Just i  -> H.button_ [ P.class_ "map-help", H.onClick (SelectSlot i)
+                       , P.title_ "How holes work" ]
+               [ text "❓ Holes" ]
+  Nothing -> text ""
+
+-- | The slot id of the hole-help page (item A4). A game that wants the help link
+-- names its onboarding prose page with this id.
+helpAnchor :: T.Text
+helpAnchor = "how-holes-work"
 
 -- | The section title for a section id (empty if unknown).
 sectionTitleOf :: GameEnv -> T.Text -> T.Text
