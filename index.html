@@ -181,6 +181,14 @@
     .err p { margin: 0 0 .4rem; }
     .errdump { max-height: 14rem; overflow: auto; margin: 0;
                background: #fff3f3; font-size: .85rem; white-space: pre; }
+    /* "Edited since last check" — the shown result is stale until the next Check. */
+    .check-stale { margin: 0 0 .4rem; color: #9a6700; font-size: .85rem; }
+    /* The "Copy issue report" control in the checker-crash panel: a link-like
+       button (no button chrome), so it reads as an inline action. */
+    .copy-report { background: none; border: none; padding: 0; margin: 0;
+                   font: inherit; color: #991b1b; cursor: pointer;
+                   text-decoration: underline; }
+    .copy-report:hover { color: #c0392b; }
     /* Hints: hidden by default, revealed one at a time (or auto-surfaced by a
        matching goal). Each card is a soft amber box; the reveal is a dashed
        "ask for help" affordance, distinct from the solid control buttons. */
