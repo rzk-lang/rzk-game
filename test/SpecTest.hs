@@ -277,7 +277,7 @@ main = do
        == Just "(A : U) → (x : A) → hom A x x")
   check "a #postulate resolves to its declared type"
     (inventoryType (levelPrelude ws) "is-segal-arr"
-       == Just "( A : U) → (is-segal-A : is-segal A) → is-segal (arr A)")
+       == Just "(A : U) → (is-segal-A : is-segal A) → is-segal (arr A)")
   check "a name the prelude does not define resolves to Nothing"
     (inventoryType (levelPrelude ws) "no-such-lemma" == Nothing)
 

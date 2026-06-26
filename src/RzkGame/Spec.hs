@@ -42,10 +42,12 @@ import           Control.Applicative ((<|>))
 import           Data.Aeson          (FromJSON (..), Value (String), withObject,
                                       (.!=), (.:), (.:?))
 import           Data.Aeson.Types    (Parser)
-import           Data.Char           (isSpace)
 import           Data.Map.Strict     (Map)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
+
+import           Language.Rzk.Syntax     (parseModule, printTree)
+import           Language.Rzk.Syntax.Abs
 
 import           RzkGame.Level       (Hint (..), InventoryEntry (..))
 
@@ -300,132 +302,92 @@ fenceRole line
 --
 -- so the type must be the closed Π-type that @<name>@ inhabits, with no binders
 -- left on the left of the @:@, and the @uses@ list must match what @<name>@
--- transitively needs (see 'takeUses' and 'RzkGame.Level.checkLevel').
+-- transitively needs (see 'RzkGame.Level.checkLevel').
 --
--- Authors may write the template with grouped binders (the gentle style the
--- hand-authored levels use, e.g. @#def rut (A : U) (x y : A) … : T := \\ … → ?@)
--- /or/ already in closed form (@#def rut : (A : U) → … → T := …@). We recover the
--- closed type uniformly: split off the binder groups before the result-type
--- colon, expand each @(x y : A)@ into @(x : A) → (y : A)@, and join them with the
--- result type by @→@. A template already in closed form has no binders, so its
--- result type /is/ the closed type and passes through unchanged. The
--- reconstruction reproduces exactly what rzk's elaborator would assign, so the
--- recovered type matches the corresponding 'RzkGame.Content' @levelGoalType@.
+-- We parse the template with rzk's own parser and read the @#def@'s name, its
+-- @uses@ vars, and its parameter telescope, then fold the telescope into a Π over
+-- the result type and print it back ('closedType'). Authors may write the
+-- template with grouped binders (the gentle style the hand-authored levels use,
+-- e.g. @#def rut (A : U) (x y : A) … : T := \\ … → ?@) /or/ already in closed form
+-- (@#def rut : (A : U) → … → T := …@): a closed-form @#def@ simply has no
+-- parameters, so its result type /is/ the closed type. The printed type is rzk's
+-- canonical surface form, which matches the hand-authored 'RzkGame.Content'
+-- @levelGoalType@.
 goalFromTemplate :: Text -> Either Text (Text, Text, [Text])
-goalFromTemplate template = do
-  let header = snd (T.breakOn "#def" (fst (T.breakOn ":=" template)))
-  rest <- if T.null header
-            then Left "template has no `#def` to read the goal from"
-            else Right (T.stripStart (T.drop (T.length "#def") header))
-  let (name, afterName) = T.break isSpace rest
-  if T.null name
-    then Left "template `#def` has no name"
-    else do
-      let (uses, afterUses) = takeUses (T.stripStart afterName)
-      (bindersText, resultType) <- splitResultColon afterUses
-      let binders   = concatMap expandBinder (parenGroups bindersText)
-          closed    = T.intercalate " → " (binders ++ [normalise resultType])
-      Right (name, closed, uses)
+goalFromTemplate template =
+  case parseModule ("#lang rzk-1\n" <> template) of
+    Left err                -> Left ("template does not parse: " <> err)
+    Right (Module _ _ cmds) -> case [ c | c@CommandDefine{} <- cmds ] of
+      (c : _) -> Right (commandName c, closedType c, commandUses c)
+      []      -> Left "template has no `#def` to read the goal from"
 
--- | The as-written type of a prelude definition, looked up by name. Scans the
--- prelude for a @#def <name> …@ or @#postulate <name> …@ command and recovers its
--- closed Π-type the same way 'goalFromTemplate' recovers the goal — the original
--- declared type, not weak-head-normalised. 'Nothing' when no command defines that
--- exact name (e.g. the name is a parameter, a projection, or an applied
--- expression), so the inventory simply shows no type for that entry.
+-- | The as-written type of a prelude definition, looked up by name. Parses the
+-- prelude and recovers the closed Π-type of the @#def@ or @#postulate@ of that
+-- name the same way 'goalFromTemplate' recovers the goal — the original declared
+-- type, not weak-head-normalised. 'Nothing' when the prelude does not parse or no
+-- command defines that exact name (e.g. the name is a parameter, a projection, or
+-- an applied expression), so the inventory simply shows no type for that entry.
 inventoryType :: Text -> Text -> Maybe Text
-inventoryType prelude wanted =
-  case [ ty | cmd <- preludeCommands prelude, Just ty <- [commandType wanted cmd] ] of
-    (ty : _) -> Just ty
-    []       -> Nothing
-
--- | Split a prelude into commands: a new command begins at each line that starts
--- with @#@ (column 0); indented continuation lines join the current command.
-preludeCommands :: Text -> [Text]
-preludeCommands = go [] . T.lines
+inventoryType prelude wanted = case parseModule prelude of
+  Left _                  -> Nothing
+  Right (Module _ _ cmds) -> case [ c | c <- cmds, isDecl c, commandName c == wanted ] of
+    (c : _) -> Just (closedType c)
+    []      -> Nothing
   where
-    flush acc = [T.unlines (reverse acc) | not (null acc)]
-    go acc []       = flush acc
-    go acc (l : ls)
-      | "#" `T.isPrefixOf` l = flush acc ++ go [l] ls
-      | otherwise            = go (l : acc) ls
+    isDecl CommandDefine{}    = True
+    isDecl CommandPostulate{} = True
+    isDecl _                  = False
 
--- | The closed type of a @#def@/@#postulate@ command, if it defines @wanted@.
--- A @#def@'s body (after @:=@) is dropped; a @#postulate@ has none. The header is
--- then closed exactly as 'goalFromTemplate' closes a template's goal.
-commandType :: Text -> Text -> Maybe Text
-commandType wanted cmd = case T.words cmd of
-  (kw : n : _)
-    | kw `elem` ["#def", "#postulate"], n == wanted ->
-        let afterKw   = T.stripStart (T.drop (T.length kw) (T.stripStart cmd))
-            afterName = T.drop (T.length n) afterKw
-            header    = fst (T.breakOn ":=" afterName)
-            (_, afterUses) = takeUses (T.stripStart header)
-        in case splitResultColon afterUses of
-             Right (bindersText, resultType) ->
-               Just (T.intercalate " → "
-                       (concatMap expandBinder (parenGroups bindersText)
-                          ++ [normalise resultType]))
-             Left _ -> Nothing
-  _ -> Nothing
+-- | The closed Π-type a @#def@/@#postulate@ declares, as canonical surface text:
+-- its parameter telescope ('foldParams') folded into a Π over the result type and
+-- pretty-printed. Defined to return the result type unchanged for any other
+-- command, but the callers only ever pass a declaration.
+closedType :: Command -> Text
+closedType cmd = T.pack (printTree (uncurry foldParams (commandSig cmd)))
 
--- | Strip a leading @uses (a, b, …)@ clause (rzk's syntax puts it between the
--- definition name and its parameters), returning its comma-separated names and
--- the remaining text. A @#def@ with no @uses@ clause yields @([], input)@ — the
--- keyword must be followed by a parenthesised list to count.
-takeUses :: Text -> ([Text], Text)
-takeUses t0 = case T.stripPrefix "uses" t0 of
-  Just r -> case T.uncons (T.stripStart r) of
-    Just ('(', inner) ->
-      let (grp, afterGrp) = T.break (== ')') inner
-          names = filter (not . T.null) (map T.strip (T.splitOn "," grp))
-      in (names, T.drop 1 afterGrp)  -- drop the closing ')'
-    _ -> ([], t0)                    -- "uses" not followed by '(' — not a clause
-  Nothing -> ([], t0)
+-- | A declaration's @(parameters, result type)@; @([], …)@ for anything else.
+commandSig :: Command -> ([Param], Term)
+commandSig (CommandDefine _ _ _ ps ty _)  = (ps, ty)
+commandSig (CommandPostulate _ _ _ ps ty) = (ps, ty)
+commandSig c                              = ([], Universe (commandAnn c))
 
--- | Split @<binders> : <result-type>@ at the first colon that sits at paren
--- depth zero — the one separating the binder groups from the result type. The
--- binder colons all sit inside parentheses, so they are skipped.
-splitResultColon :: Text -> Either Text (Text, Text)
-splitResultColon = go 0 []
+-- | Fold a parameter telescope into a Π-type over the result. Each binder group
+-- @(x y : A)@ becomes @(x : A) → (y : A) → …@ (one Π per pattern), and a shape
+-- binder @(t : I | φ)@ its extension Π. Untyped binders cannot appear in a
+-- well-formed declaration signature, so they are dropped.
+foldParams :: [Param] -> Term -> Term
+foldParams ps body = foldr wrap body ps
   where
-    go :: Int -> [Char] -> Text -> Either Text (Text, Text)
-    go d acc t = case T.uncons t of
-      Nothing -> Left "template `#def` has no result type (no top-level `:`)"
-      Just (c, cs) -> case c of
-        '('             -> go (d + 1) (c : acc) cs
-        ')'             -> go (d - 1) (c : acc) cs
-        ':' | d == 0    -> Right (T.pack (reverse acc), cs)
-        _               -> go d (c : acc) cs
+    wrap (ParamPatternType _ pats ty) acc =
+      foldr (\p a -> TypeFun Nothing (ParamTermType Nothing (patTerm p) ty) a) acc pats
+    wrap (ParamPatternShape _ pats sh tope) acc =
+      foldr (\p a -> TypeFun Nothing (ParamTermShape Nothing (patTerm p) sh tope) a) acc pats
+    wrap _ acc = acc
 
--- | The inner contents of each top-level parenthesised group in a binder list,
--- in order; text outside parentheses (whitespace) is ignored.
-parenGroups :: Text -> [Text]
-parenGroups = go 0 [] []
-  where
-    go :: Int -> [Char] -> [Text] -> Text -> [Text]
-    go d cur acc t = case T.uncons t of
-      Nothing -> reverse acc
-      Just (c, cs) -> case c of
-        '(' | d == 0   -> go 1 [] acc cs
-            | otherwise -> go (d + 1) (c : cur) acc cs
-        ')' | d == 1    -> go 0 [] (T.pack (reverse cur) : acc) cs
-            | otherwise -> go (d - 1) (c : cur) acc cs
-        _   | d == 0    -> go d cur acc cs
-            | otherwise -> go d (c : cur) acc cs
+-- | A binder pattern as the term that names it in a Π parameter.
+patTerm :: Pattern -> Term
+patTerm (PatternVar _ v)        = Var Nothing v
+patTerm (PatternPair _ p q)     = Pair Nothing (patTerm p) (patTerm q)
+patTerm (PatternTuple _ p q rs) = Tuple Nothing (patTerm p) (patTerm q) (map patTerm rs)
+patTerm (PatternUnit _)         = Unit Nothing
 
--- | Expand one binder group @"x y : A"@ into the single-variable closed binders
--- @["(x : A)", "(y : A)"]@. A group with no @:@ (which should not occur in a
--- well-formed @#def@) expands to nothing.
-expandBinder :: Text -> [Text]
-expandBinder grp = case T.breakOn ":" grp of
-  (_, t) | T.null t -> []
-  (vars, ty0) ->
-    let ty = normalise (T.drop 1 ty0)
-    in [ "(" <> v <> " : " <> ty <> ")" | v <- T.words vars ]
+-- | The head name of a @#def@/@#postulate@ (empty for any other command).
+commandName :: Command -> Text
+commandName (CommandDefine _ v _ _ _ _)  = varText v
+commandName (CommandPostulate _ v _ _ _) = varText v
+commandName _                            = ""
 
--- | Collapse all runs of whitespace (including newlines and indentation) to
--- single spaces and trim, so a type written across several indented lines reads
--- as the single-spaced form the hand-authored @levelGoalType@s use.
-normalise :: Text -> Text
-normalise = T.unwords . T.words
+-- | The @uses (…)@ assumption names a @#def@/@#postulate@ declares (empty when it
+-- has no @uses@ clause, or for any other command).
+commandUses :: Command -> [Text]
+commandUses (CommandDefine _ _ (DeclUsedVars _ vs) _ _ _)  = map varText vs
+commandUses (CommandPostulate _ _ (DeclUsedVars _ vs) _ _) = map varText vs
+commandUses _                                             = []
+
+varText :: VarIdent -> Text
+varText (VarIdent _ (VarIdentToken t)) = t
+
+commandAnn :: Command -> BNFC'Position
+commandAnn (CommandDefine a _ _ _ _ _)  = a
+commandAnn (CommandPostulate a _ _ _ _) = a
+commandAnn _                            = Nothing
