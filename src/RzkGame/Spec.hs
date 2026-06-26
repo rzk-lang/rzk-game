@@ -180,12 +180,13 @@ data Meta = Meta
   , metaRole      :: Maybe Text
   , metaStatement :: Text
   , metaInventory :: [InventoryEntry]
+  , metaForbidden :: [Text]
   , metaHints     :: [Hint]
   , metaGated     :: Bool
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" [] [] False
+emptyMeta = Meta "" "" Nothing "" [] [] [] False
 
 
 instance FromJSON Meta where
@@ -195,6 +196,7 @@ instance FromJSON Meta where
     <*> o .:? "role"
     <*> o .:? "statement" .!= ""
     <*> (o .:? "inventory" .!= [] >>= traverse parseInventoryEntry)
+    <*> o .:? "forbidden" .!= []
     <*> (o .:? "hints" .!= [] >>= traverse parseHint)
     <*> o .:? "gated" .!= False
 

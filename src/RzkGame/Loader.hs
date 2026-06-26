@@ -87,6 +87,7 @@ puzzleFrom files ref = do
         , levelGoalType   = goalType
         , levelGoalUses   = goalUses
         , levelInventory  = metaInventory m
+        , levelForbidden  = metaForbidden m
         , levelHints      = metaHints m
         , levelGated      = metaGated m
         , levelConclusion = conclusion

@@ -1286,6 +1286,7 @@ puzzleSlotView env m sid ix z =
     -- (so the green box and the success cues stay hidden until the proof uses
     -- only granted moves), while a non-gated level only ever shows a soft notice.
     gate           = inventoryViolations lvl (fromMisoString (m ^. editable))
+    forbidden      = forbiddenViolations lvl (fromMisoString (m ^. editable))
     solvedAccepted = m ^. result == Solved && gatePassed lvl (fromMisoString (m ^. editable))
     body
       | locked    = [ lockPanel env m z ]
@@ -1294,16 +1295,18 @@ puzzleSlotView env m sid ix z =
           <> [ H.h3_ [] [ text "Your proof" ]
              , editorView (m ^. editable) (resultErrorLines (m ^. result))
              , H.h3_ [] [ text "Moves" ]
-             , movesView m
+             , movesView lvl m
              , inventoryView lvl
              , H.h3_ [] [ text "Result" ]
              , checkStatusView m
-             -- A gated solve that uses ungranted lemmas is withheld: the red
-             -- gate box replaces the green success box; otherwise the result
-             -- shows normally, with any gate notice below it.
-             , if m ^. result == Solved && not (null gate) && levelGated lvl
+             -- A gated solve that uses an ungranted or forbidden move is withheld:
+             -- the red gate box replaces the green success box; otherwise the
+             -- result shows normally, with any gate notice below it.
+             , if m ^. result == Solved && levelGated lvl
+                  && not (null gate && null forbidden)
                  then text "" else resultView lvl (m ^. editable) (m ^. result)
              , gateView lvl (m ^. result) gate
+             , forbiddenGateView lvl forbidden
              , hintsView m lvl
              , conclusionView m lvl solvedAccepted
              ]
@@ -1461,11 +1464,11 @@ editorView code errLines =
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is
 -- solved, errs, or has not been checked.
-movesView :: Model -> View Model Action
-movesView m =
+movesView :: Level -> Model -> View Model Action
+movesView lvl m =
   case m ^. result of
     Holes (h : _)
-      | moves@(_ : _) <- holeActions h ->
+      | moves@(_ : _) <- allowedActions lvl h ->
           H.div_ [ P.class_ "actions" ]
             [ moveButton kind ins | (kind, ins) <- moves ]
     _ -> H.p_ [ P.class_ "muted" ] [ text "Moves appear here when a hole is in focus." ]
@@ -1554,18 +1557,38 @@ inventoryView lvl
 gateView :: Level -> CheckResult -> [T.Text] -> View Model Action
 gateView lvl res violations
   | null violations = text ""
-  | levelGated lvl  =
-      H.div_ [ P.class_ "gate gate-hard" ]
-        [ H.p_ [] [ text (ms (hardMsg <> names)) ] ]
-  | otherwise =
-      H.div_ [ P.class_ "gate gate-soft" ]
-        [ H.p_ [] [ text (ms ("Heads up — the intended solution does not use " <> names
-                      <> ". Your proof still counts, but there is a shorter route without it.")) ] ]
+  | otherwise       = gateBox (levelGated lvl) (hardMsg <> names) soft
   where
     names = T.intercalate ", " violations
+    soft  = "Heads up — the intended solution does not use " <> names
+              <> ". Your proof still counts, but there is a shorter route without it."
     hardMsg = case res of
       Solved -> "🔒 So close — but this level grants only the moves under \x201c\&Allowed here\x201d, and your proof uses "
       _      -> "🔒 Not allowed here — this level grants only the moves under \x201c\&Allowed here\x201d, not "
+
+-- | The forbidden-moves notice: the always-available eliminators
+-- ('first'\/'second'\/'recOR'\/…) the proof uses that this level denies (see
+-- 'forbiddenViolations'). Hard red on a gated level (the solve is withheld until
+-- they are gone), soft amber otherwise. The moves panel already hides these, so
+-- this fires only when the player types one directly. Empty when there are none.
+forbiddenGateView :: Level -> [T.Text] -> View Model Action
+forbiddenGateView lvl violations
+  | null violations = text ""
+  | otherwise       = gateBox (levelGated lvl) hard soft
+  where
+    names = T.intercalate ", " violations
+    hard  = "🔒 Not allowed here — this level asks you to build the proof without "
+              <> names <> ", so it does not count while they are used."
+    soft  = "Heads up — this level asks you to avoid " <> names
+              <> ". Your proof still counts, but the intended route does without it."
+
+-- | A gate notice box: hard (red, blocking) on a gated level, soft (amber,
+-- advisory) otherwise. Shared by the inventory and forbidden-moves gates, each
+-- supplying its own wording.
+gateBox :: Bool -> T.Text -> T.Text -> View Model Action
+gateBox gated hard soft =
+  H.div_ [ P.class_ (ms (if gated then "gate gate-hard" else "gate gate-soft" :: T.Text)) ]
+    [ H.p_ [] [ text (ms (if gated then hard else soft)) ] ]
 
 -- | The focused hole's rendered goal, if the proof currently has holes. This is
 -- what a hint's @when-goal@ trigger is matched against.

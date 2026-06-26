@@ -1,4 +1,8 @@
 ---
+forbidden:
+- first
+- second
+- recOR
 gated: true
 id: witness-square-comp-is-segal
 inventory:

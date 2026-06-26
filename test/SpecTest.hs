@@ -64,8 +64,8 @@ main = do
         , levelTemplate = "#def goal uses (A) : U\n  := ?"
         , levelSolution = "#def goal uses (A) : U\n  := A"
         , levelGoalName = "goal", levelGoalType = "U", levelGoalUses = us
-        , levelInventory = [], levelHints = [], levelGated = False
-        , levelConclusion = "" }
+        , levelInventory = [], levelForbidden = [], levelHints = []
+        , levelGated = False, levelConclusion = "" }
   check "checkLevel solves when the goal-check declares the assumption"
     (checkLevel (usesLevel ["A"]) (levelSolution (usesLevel ["A"])) == Solved)
   check "checkLevel fails the same proof when the uses clause is dropped"
@@ -299,6 +299,34 @@ main = do
   check "a candidate move applies the granted lemma id-hom to holes"
     (any (\m -> "id-hom" `T.isPrefixOf` m && "?" `T.isInfixOf` m) moves)
 
+  -- 10d. Forbidden moves: a level's denylist drops the always-available
+  --      eliminators (first/second/recOR/idJ) from the moves panel
+  --      (allowedActions) and, on a gated level, blocks a proof that types one
+  --      (forbiddenViolations / gatePassed). "The composition square" forbids
+  --      first/second/recOR and is built from the granted lemmas instead, so its
+  --      own reference solution stays clean.
+  putStrLn "== forbidden moves: the denylist filters moves and gates the proof =="
+  let wsForbidProof = T.unlines
+        [ "#def witness-square-comp-is-segal"
+        , "  (A : U) (is-segal-A : is-segal A) (x y z : A)"
+        , "  (f : hom A x y) (g : hom A y z)"
+        , "  : Δ¹×Δ¹ → A"
+        , "  := \\ (t , s) → first (is-segal-A x y z f g) t s" ]
+      hv = HoleView Nothing "goal" [] [] []
+             ["first (?)", "recOR ( ? )", "id-hom (?)", "second (?)"] ["\\ t → ?"]
+  check "the composition square forbids first/second/recOR"
+    (levelForbidden ws == ["first", "second", "recOR"])
+  check "a forbidden eliminator in the body is flagged"
+    (forbiddenViolations ws wsForbidProof == ["first"])
+  check "the gated solution uses no forbidden move"
+    (null (forbiddenViolations ws (levelSolution ws)))
+  check "a gated proof that types a forbidden move fails the gate"
+    (not (gatePassed ws wsForbidProof))
+  check "allowedActions drops forbidden gives, keeping intros and allowed gives"
+    (allowedActions ws hv == [(Intro, "\\ t → ?"), (Give, "id-hom (?)")])
+  check "a level that forbids nothing flags nothing"
+    (null (forbiddenViolations (head gameLevels) "#def x := first (foo)"))
+
   -- 11. Error ordering: a wrong-typed editable region renders an error whose
   --     first non-empty line is the headline mismatch, not the global context
   --     dump. The engine formats TopDown, so the message leads (LSP-style).
@@ -331,8 +359,8 @@ main = do
         , levelTemplate = "#def foo (k : (x y : A) → A) : A\n  := ?"
         , levelSolution = "#def foo (k : (x y : A) → A) : A\n  := ?"
         , levelGoalName = "foo", levelGoalType = "(k : (x y : A) → A) → A"
-        , levelGoalUses = [], levelInventory = [], levelHints = []
-        , levelGated = False, levelConclusion = "" }
+        , levelGoalUses = [], levelInventory = [], levelForbidden = []
+        , levelHints = [], levelGated = False, levelConclusion = "" }
   check "a multivar-binder panic is caught as CheckerCrashed"
     (case checkLevel crashLevel (levelTemplate crashLevel) of
        CheckerCrashed _ -> True
@@ -442,6 +470,7 @@ fileV (SPuzzle z) = object
       ( [ "id" .= puzzleId z, "title" .= levelTitle lvl
         , "statement" .= levelStatement lvl
         , "inventory" .= map entryV (levelInventory lvl) ]
+        <> [ "forbidden" .= levelForbidden lvl | not (null (levelForbidden lvl)) ]
         <> [ "hints" .= map hintV (levelHints lvl) | not (null (levelHints lvl)) ]
         <> [ "gated" .= True | levelGated lvl ] )
   , "body" .= levelBody lvl

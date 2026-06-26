@@ -19,6 +19,7 @@ module RzkGame.Level
   , MoveKind (..)
   , checkLevel
   , holeActions
+  , allowedActions
   , refineFirstHole
   , renderResult
   , resultErrorLines
@@ -26,6 +27,7 @@ module RzkGame.Level
   , visibleHints
   , plainHintCount
   , inventoryViolations
+  , forbiddenViolations
   , gatePassed
   ) where
 
@@ -77,8 +79,9 @@ data Level = Level
   , levelGoalType   :: Text   -- ^ its required (closed) type, enforced on check
   , levelGoalUses   :: [Text] -- ^ assumptions the goal-check declares via @uses (…)@
   , levelInventory  :: [InventoryEntry] -- ^ granted lemmas (the "Allowed here" list)
+  , levelForbidden  :: [Text] -- ^ eliminators denied here (dropped from the moves)
   , levelHints      :: [Hint] -- ^ authored hints, revealed on request
-  , levelGated      :: Bool   -- ^ make an inventory violation fail the check
+  , levelGated      :: Bool   -- ^ make an inventory or forbidden violation fail the check
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -260,14 +263,31 @@ referencedNames src =
   where
     proofBodies = T.unwords . map (fst . T.breakOn "#") . drop 1 . T.splitOn ":="
 
+-- | The /forbidden-moves/ check: the always-available eliminators
+-- ('first'\/'second'\/'recOR'\/'idJ', …) the editable proof uses that the level
+-- denies. Unlike an ungranted lemma, these are rzk builtins, not prelude
+-- definitions, so 'inventoryViolations' never catches them (it intersects with
+-- the prelude-defined names) — the denylist is the only thing that does. Like the
+-- inventory gate, only the proof /bodies/ are scanned (the text after each @:=@),
+-- so the same name appearing in a type signature is not flagged. A level with an
+-- empty 'levelForbidden' denies nothing.
+forbiddenViolations :: Level -> Text -> [Text]
+forbiddenViolations lvl editable
+  | null (levelForbidden lvl) = []
+  | otherwise =
+      nub [ n | n <- referencedNames editable, n `elem` levelForbidden lvl ]
+
 -- | Whether the editable region passes the level's gate: trivially true on a
 -- level that does not opt into 'levelGated', otherwise true only when there are
--- no inventory violations. A gated level with a violation does not count as
--- solved even if it type-checks (the UI surfaces the violation as the blocker);
--- a non-gated level only ever shows a soft notice, so its solve still stands.
+-- no inventory /and/ no forbidden-move violations. A gated level with a violation
+-- does not count as solved even if it type-checks (the UI surfaces the violation
+-- as the blocker); a non-gated level only ever shows a soft notice, so its solve
+-- still stands.
 gatePassed :: Level -> Text -> Bool
 gatePassed lvl editable =
-  not (levelGated lvl) || null (inventoryViolations lvl editable)
+  not (levelGated lvl)
+    || (null (inventoryViolations lvl editable)
+          && null (forbiddenViolations lvl editable))
 
 -- | Best-effort line number from a parse error message. rzk's parser formats its
 -- errors as @"syntax error at line L column C …"@ (and layout errors likewise),
@@ -434,6 +454,25 @@ holeActions :: HoleView -> [(MoveKind, Text)]
 holeActions HoleView{..} =
      [ (Intro, m) | m <- nub hvIntros ]
   <> [ (Give,  m) | m <- nub hvMoves ]
+
+-- | The tap-to-fill moves for a hole with the level's forbidden eliminators
+-- removed: any move whose head identifier (the leading token of its filler term,
+-- e.g. @first@ in @first (?)@) is in 'levelForbidden' is dropped. The
+-- introduction moves are matched the same way, but their heads (@\\@, @(@, @refl@,
+-- a tope constructor) are never eliminator names, so a denylist of eliminators
+-- only ever affects the give moves. A level that forbids nothing keeps the full
+-- 'holeActions'.
+allowedActions :: Level -> HoleView -> [(MoveKind, Text)]
+allowedActions lvl h =
+  [ a | a@(_, ins) <- holeActions h, moveHead ins `notElem` levelForbidden lvl ]
+
+-- | The head identifier of a move's filler term: its leading whitespace-delimited
+-- token (@first (?)@ → @first@, @recOR ( … )@ → @recOR@). Used to match a move
+-- against the forbidden-moves denylist.
+moveHead :: Text -> Text
+moveHead ins = case T.words (T.strip ins) of
+  (w : _) -> w
+  []      -> ""
 
 -- | Render rzk's notation as the ASCII the levels use in prose and reference
 -- solutions, so a tapped move reads the same as the text the player would type.
