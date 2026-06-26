@@ -14,18 +14,19 @@ packages: .
 -- branches against the expected type (#247), which lets a bare hole sit inside
 -- a recOR branch (used by the unfolding-square level).
 --
--- Pinned past the v0.9.0 release to a develop commit for four hole fixes: the
--- elimination-depth bound now charges only branching eliminators (#261), so the
--- deep granted lemmas on the associativity levels surface as candidate moves;
--- lenient mode tolerates an unused `uses` assumption when the section has a hole
--- (#262); multi-variable binders in function types are desugared instead of
--- crashing the hole query (#263); and a boundary mismatch under a hole-bearing
--- tope is deferred (#267), so a hole standing for a whole shape-restricted
--- argument is reported rather than failing the enclosing extension-type boundary.
+-- Pinned to the v0.9.1 release. It carries the four hole fixes that motivated
+-- the previous develop pin: the elimination-depth bound charges only branching
+-- eliminators (#261), so the deep granted lemmas on the associativity levels
+-- surface as candidate moves; lenient mode tolerates an unused `uses` assumption
+-- when the section has a hole (#262); multi-variable binders in function types
+-- are desugared instead of crashing the hole query (#263); and a boundary
+-- mismatch under a hole-bearing tope is deferred (#267), so a hole standing for a
+-- whole shape-restricted argument is reported rather than failing the enclosing
+-- extension-type boundary.
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 825f2f8c51b8a75e34c5c9638301823c6a93b652
+  tag: 127af12e73f95a032385cd948762ae9fa7363bab
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
