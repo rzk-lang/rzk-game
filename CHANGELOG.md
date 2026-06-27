@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-27
+
+### Fixed
+
+- A malformed term such as an unbalanced `)` no longer freezes the app (or, on a check, shows as a checker crash): rzk's layout resolver throws on such input instead of returning an error, so a new total `safeParseModule` wrapper catches it and every caller — the checker, the formatter, the loader — now treats it as an ordinary parse failure ([#46](https://github.com/rzk-lang/rzk-game/issues/46)).
+
 ## [0.3.0] - 2026-06-27
 
 ### Added
@@ -58,7 +64,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Progress export, import, and reset.
 - A Format action with an opt-in format-on-check.
 
-[Unreleased]: https://github.com/rzk-lang/rzk-game/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rzk-lang/rzk-game/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/rzk-lang/rzk-game/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/rzk-lang/rzk-game/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rzk-lang/rzk-game/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rzk-lang/rzk-game/releases/tag/v0.1.0

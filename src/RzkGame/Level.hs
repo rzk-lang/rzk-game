@@ -44,8 +44,8 @@ import           System.IO.Unsafe     (unsafePerformIO)
 import           Text.Read            (readMaybe)
 
 import           RzkGame.Highlight    (Tok (..), TokClass (Plain), highlight)
+import           RzkGame.Parse        (safeParseModule)
 
-import           Language.Rzk.Syntax  (parseModule)
 import           Rzk.Diagnostic       (locationOfTypeError)
 import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
                                        LocationInfo (..),
@@ -353,7 +353,7 @@ checkLevelPure lvl editable =
       -- they surface as tap-to-fill moves applied to holes (an empty inventory
       -- gives an empty allow-list, reproducing the plain hole query).
       lemmas = map (fromString . T.unpack) (levelInventoryNames lvl)
-  in case parseModule src of
+  in case safeParseModule src of
        Left err -> ParseError err (toEditableLine =<< parseErrorLine err)
        Right m  ->
          case typecheckModulesWithHolesAndLemmas lemmas [("level", m)] of

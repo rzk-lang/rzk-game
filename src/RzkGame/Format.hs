@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Tidying the player's editable region with rzk's own formatter.
 --
@@ -15,11 +16,15 @@ module RzkGame.Format
   , isWellFormatted
   ) where
 
+import           Control.DeepSeq     (force)
+import           Control.Exception   (SomeException, evaluate, try)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
+import           System.IO.Unsafe    (unsafePerformIO)
 
-import           Language.Rzk.Syntax (parseModule)
 import           Rzk.Format          (format, isWellFormatted)
+
+import           RzkGame.Parse       (safeParseModule)
 
 -- | Format to a fixpoint. rzk's 'format' is not idempotent on every input — it
 -- stabilises some forms (e.g. a cube product like @(2 × 2)@, where it inserts
@@ -44,9 +49,23 @@ formatFixpoint = go (10 :: Int)
 -- fragment that does not parse is returned unchanged: a no-op, never a
 -- corrupting rewrite.
 formatEditable :: Text -> Text
-formatEditable src
-  | parses    = formatFixpoint src
-  | otherwise = src
+formatEditable src = guardFormat src (formatPure src)
   where
-    probe  = if "#lang" `T.isInfixOf` src then src else "#lang rzk-1\n" <> src
-    parses = either (const False) (const True) (parseModule probe)
+    formatPure s
+      | parses    = formatFixpoint s
+      | otherwise = s
+      where
+        probe  = if "#lang" `T.isInfixOf` s then s else "#lang rzk-1\n" <> s
+        parses = either (const False) (const True) (safeParseModule probe)
+
+-- | Formatting is a best-effort tidy, so it must never crash the caller. The
+-- parse guard goes through 'safeParseModule', but rzk's token-level 'format' is
+-- itself a parser-adjacent call; should it throw on some input, fall back to the
+-- original text rather than freezing the wasm app (rzk-lang/rzk-game#46).
+guardFormat :: Text -> Text -> Text
+guardFormat orig out = unsafePerformIO $ do
+  outcome <- try (evaluate (force out))
+  pure $ case outcome of
+    Right t                   -> t
+    Left (_ :: SomeException) -> orig
+{-# NOINLINE guardFormat #-}

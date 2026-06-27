@@ -390,6 +390,27 @@ main = do
        Holes _ -> True
        _       -> False)
 
+  putStrLn "== parser robustness: a thrown layout error is caught, not fatal (#46) =="
+  -- rzk's layout resolver throws (rather than returning Left) on an unbalanced
+  -- `)`. Forced unguarded it freezes the wasm app; on the check path it showed as
+  -- a checker crash. Both the formatter and the checker must now treat it as an
+  -- ordinary parse failure.
+  let parenLevel = Level
+        { levelTitle = "paren", levelIntro = "", levelStatement = ""
+        , levelPrelude = "#lang rzk-1\n#def ind-path\n  ( A : U)\n  ( a : A)\n  ( C : (x : A) → (a = x) → U)\n  ( d : C a refl)\n  ( x : A)\n  ( p : a = x)\n  : C x p\n  := idJ (A , a , C , d , x , p)"
+        , levelTemplate = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ?"
+        , levelSolution = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ y' p' → y' = x) refl y p"
+        , levelGoalName = "rev", levelGoalType = "(A : U) → (x y : A) → (p : x = y) → y = x"
+        , levelGoalUses = [], levelInventory = [], levelForbidden = []
+        , levelHints = [], levelGated = False, levelConclusion = "" }
+      badParen = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ z q → z = x)) ? ? ?"
+  check "formatEditable no-ops on a layout-error fragment instead of crashing"
+    (formatEditable badParen == badParen)
+  check "checkLevel reports a layout-error term as a parse error, not a crash"
+    (case checkLevel parenLevel badParen of
+       ParseError{} -> True
+       _            -> False)
+
   n <- readIORef failed
   if n == 0
     then putStrLn "\nAll Phase 3 spec/loader tests passed."

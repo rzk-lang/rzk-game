@@ -46,7 +46,8 @@ import           Data.Map.Strict     (Map)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 
-import           Language.Rzk.Syntax     (parseModule, printTree)
+import           Language.Rzk.Syntax     (printTree)
+import           RzkGame.Parse           (safeParseModule)
 import           Language.Rzk.Syntax.Abs
 
 import           RzkGame.Level       (Hint (..), InventoryEntry (..))
@@ -315,7 +316,7 @@ fenceRole line
 -- @levelGoalType@.
 goalFromTemplate :: Text -> Either Text (Text, Text, [Text])
 goalFromTemplate template =
-  case parseModule ("#lang rzk-1\n" <> template) of
+  case safeParseModule ("#lang rzk-1\n" <> template) of
     Left err                -> Left ("template does not parse: " <> err)
     Right (Module _ _ cmds) -> case [ c | c@CommandDefine{} <- cmds ] of
       (c : _) -> Right (commandName c, closedType c, commandUses c)
@@ -328,7 +329,7 @@ goalFromTemplate template =
 -- command defines that exact name (e.g. the name is a parameter, a projection, or
 -- an applied expression), so the inventory simply shows no type for that entry.
 inventoryType :: Text -> Text -> Maybe Text
-inventoryType prelude wanted = case parseModule prelude of
+inventoryType prelude wanted = case safeParseModule prelude of
   Left _                  -> Nothing
   Right (Module _ _ cmds) -> case [ c | c <- cmds, isDecl c, commandName c == wanted ] of
     (c : _) -> Just (closedType c)

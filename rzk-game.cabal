@@ -1,6 +1,6 @@
 cabal-version: 2.2
 name:          rzk-game
-version:       0.3.0.0
+version:       0.3.1.0
 synopsis:      Engine for interactive Rzk games (miso + GHC WebAssembly backend)
 category:      Web, Math
 build-type:    Simple
@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     RzkGame.Level
+    RzkGame.Parse
     RzkGame.Section
     RzkGame.Content
     RzkGame.Highlight
