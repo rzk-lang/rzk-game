@@ -244,9 +244,27 @@
     .mapbar-wrap.open .map-toggle { background: #cde; border-color: #79c; }
     .mapbar-loc { flex: 1; font-weight: 600; color: #444; font-size: .9rem;
                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mapbar-progress { font-size: .8rem; color: #888; white-space: nowrap;
+    .mapbar-progress { display: flex; align-items: center; gap: .4rem;
+                       font-size: .8rem; color: #888; white-space: nowrap;
                        font-variant-numeric: tabular-nums; }
+    .mapbar-bar { width: 4rem; height: .4rem; border-radius: 999px;
+                  background: #e8e8e8; overflow: hidden; flex: none; }
+    .mapbar-bar-fill { height: 100%; background: #79c; border-radius: 999px;
+                       transition: width .2s ease; }
+    .mapbar-count { white-space: nowrap; }
     .mapbar-progress.done { color: #2a7a2a; font-weight: 600; }
+    .mapbar-progress.done .mapbar-bar-fill { background: #2a7a2a; }
+    /* Starred-extras suffix: muted hollow star until every bonus is done, then
+       gold. Sits beside the required count, never folding into it. */
+    .extra-count { font-size: .8rem; font-variant-numeric: tabular-nums;
+                   font-weight: normal; color: #b0a06a; white-space: nowrap; }
+    .extra-count.done { color: #c79a00; font-weight: 600; }
+    .breadcrumb .extra-count { margin-left: .4rem; }
+    /* The breadcrumb's required count turns green when the section is done. */
+    .breadcrumb-count { font-variant-numeric: tabular-nums; }
+    .breadcrumb-count.done { color: #2a7a2a; font-weight: 600; }
+    /* Groups a required count with its extras suffix on the right of a row. */
+    .count-group { display: flex; align-items: baseline; gap: .4rem; }
     /* The persistent "How holes work" help link, at the right of the bar. */
     .map-help { background: none; border: 1px solid #ddd; border-radius: 6px;
                 cursor: pointer; font-size: .8rem; padding: .25rem .6rem;
@@ -262,9 +280,12 @@
     .sections { display: flex; flex-direction: column; gap: .5rem;
                 margin: .2rem 0 .4rem; }
     /* A chapter heading above the sections it groups in the picker. */
-    .chapter-head { font-size: .8rem; font-weight: 700; letter-spacing: .04em;
+    .chapter-head { display: flex; align-items: baseline; justify-content: space-between;
+                    gap: .5rem; font-size: .8rem; font-weight: 700; letter-spacing: .04em;
                     text-transform: uppercase; color: #667; margin: .5rem 0 -.1rem; }
     .chapter-head:first-child { margin-top: 0; }
+    .chapter-count { font-variant-numeric: tabular-nums; }
+    .chapter-count.done { color: #2a7a2a; }
     .section-block { border: 1px solid #eee; border-radius: 8px; padding: .4rem .5rem;
                      background: #fafafa; }
     .section-head { display: flex; align-items: baseline; justify-content: space-between;
