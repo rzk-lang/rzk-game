@@ -18,7 +18,9 @@ result
 result-*
 .direnv/
 
-# Local planning notes, drafts, and scratch docs (roadmap, handoffs, PR drafts)
+# Local planning notes, drafts, and scratch docs (roadmap, handoffs, PR drafts).
+# A plain directory or a symlink into a personal-notes checkout both match.
+notes
 notes/
 
 # Phase 0 de-risking spike (kept locally, not part of the engine)
