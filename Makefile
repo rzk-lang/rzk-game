@@ -12,6 +12,11 @@ STORE := $(if $(WASM_STORE),--store-dir=$(WASM_STORE),)
 GAME ?= game/game.yaml
 GAME_JSON ?= public/game.json
 
+# Native compiler for the host-side targets (bundle/test/format-game). rzk
+# v0.10.0 needs GHC 9.8 or newer, so if the default `ghc` is older, point this at
+# a new enough one, e.g.  make test NATIVE_GHC=ghc-9.8.2
+NATIVE_GHC ?= ghc
+
 # A complete, playable public/: the wasm engine plus the game data. 'build' and
 # 'bundle' use different toolchains (wasm vs native), so they are kept separate —
 # CI runs them in separate jobs (see .github/workflows/ci.yml). Locally, with
@@ -33,18 +38,18 @@ build:
 # does not touch the wasm toolchain. Writes into an existing public/ (or creates
 # the directory) so it can run after `make build` or on its own.
 bundle:
-	cabal --project-file=cabal.project.native run -v0 exe:rzk-game-bundle -- "$(GAME)" "$(GAME_JSON)"
+	cabal --project-file=cabal.project.native run -w $(NATIVE_GHC) -v0 exe:rzk-game-bundle -- "$(GAME)" "$(GAME_JSON)"
 
 # Headless native tests for the pure data pipeline (RzkGame.Spec / .Loader).
 test:
-	cabal --project-file=cabal.project.native run -v0 test:rzk-game-spec
+	cabal --project-file=cabal.project.native run -w $(NATIVE_GHC) -v0 test:rzk-game-spec
 
 # Authoring tool (off the normal path): reformat the read-only prelude blocks of
 # the game/ level files in place with rzk's canonical formatting. The test suite
 # checks every prelude is well-formatted; run this when it complains. Templates
 # and reference solutions are left as authored.
 format-game:
-	cabal --project-file=cabal.project.native run -v0 exe:rzk-game-format
+	cabal --project-file=cabal.project.native run -w $(NATIVE_GHC) -v0 exe:rzk-game-format
 
 # Shrink the module (run after build).
 optim:

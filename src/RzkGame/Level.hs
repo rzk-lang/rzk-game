@@ -49,8 +49,8 @@ import           RzkGame.Parse        (safeParseModule)
 import           Rzk.Diagnostic       (locationOfTypeError)
 import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
                                        LocationInfo (..),
-                                       OutputDirection (TopDown),
-                                       ppTypeErrorInScopedContext',
+                                       OutputDirection (TopDown), checkedErrors,
+                                       ppTypeErrorInScopedContext,
                                        typecheckModulesWithHolesAndLemmas)
 
 -- | A granted lemma in a level's inventory: a prelude-defined name the level
@@ -358,21 +358,23 @@ checkLevelPure lvl editable =
        Right m  ->
          case typecheckModulesWithHolesAndLemmas lemmas [("level", m)] of
            -- A fatal error short-circuits to 'Left'; recoverable type errors
-           -- (e.g. an unbound variable or a type mismatch) come back in the
-           -- middle field. Both must be reported — only the holes-aware
-           -- elaboration records unsolved holes separately. A real type error
-           -- takes priority over any holes the partial term still has.
+           -- (e.g. an unbound variable or a type mismatch) are carried inside the
+           -- 'Checked' package and read back with 'checkedErrors'. Both must be
+           -- reported — only the holes-aware elaboration records unsolved holes
+           -- separately. A real type error takes priority over any holes the
+           -- partial term still has.
            Left err -> TypeError (ppErr err) (errorLines err)
-           Right (_, err : _, _) -> TypeError (ppErr err) (errorLines err)
-           Right (_, [], holes)
-             | null holes -> Solved
-             | otherwise  -> Holes (map toHoleView holes)
+           Right (checked, holes) -> case checkedErrors checked of
+             err : _ -> TypeError (ppErr err) (errorLines err)
+             []
+               | null holes -> Solved
+               | otherwise  -> Holes (map toHoleView holes)
   where
     -- 'TopDown' leads with the headline mismatch ("cannot unify …") and then the
     -- "when typechecking" trace and the context, as an LSP diagnostic does.
     -- 'BottomUp' reverses each block, which buries the message under the context
     -- dump; we surface the message instead (see the Phase 5 UI-polish note).
-    ppErr = T.pack . ppTypeErrorInScopedContext' TopDown
+    ppErr = T.pack . ppTypeErrorInScopedContext TopDown
 
     -- The editable region is concatenated after the prelude and a separating
     -- newline, so its first character sits this many lines into 'src' (1-based).
@@ -392,10 +394,14 @@ checkLevelPure lvl editable =
       mapMaybe toEditableLine
         (maybeToList (locationLine =<< locationOfTypeError err))
 
--- | Tap-to-refine: replace the first hole (@?@) in the text with the given
--- insertion. This is how a tap turns into an edit — the engine re-checks the
--- rewritten text, so no engine-side refinement logic is needed. If there is no
--- hole, the text is returned unchanged.
+-- | Tap-to-refine: replace the first hole in the text with the given insertion.
+-- This is how a tap turns into an edit — the engine re-checks the rewritten
+-- text, so no engine-side refinement logic is needed. If there is no hole, the
+-- text is returned unchanged.
+--
+-- A hole is @?@ optionally followed by a name (@?goal@), so the whole token is
+-- removed, not just the leading @?@: dropping only the @?@ would leave the name
+-- dangling as a stray identifier and break the term.
 --
 -- The insertion is parenthesised (see 'parenthesize') so an application spine or
 -- a lambda cannot re-associate or fail to parse in the hole's position.
@@ -403,7 +409,14 @@ refineFirstHole :: Text -> Text -> Text
 refineFirstHole insertion src =
   case T.breakOn "?" src of
     (_, after) | T.null after -> src
-    (before, after)           -> before <> parenthesize insertion <> T.drop 1 after
+    (before, after)           ->
+      before <> parenthesize insertion <> T.dropWhile isHoleNameChar (T.drop 1 after)
+
+-- | Does this character continue a hole name after the leading @?@? Mirrors
+-- rzk's @HoleIdentToken@ (@?@ then a run of anything that is not whitespace or a
+-- term delimiter), so a named hole @?goal@ is consumed as one token.
+isHoleNameChar :: Char -> Bool
+isHoleNameChar c = not (isSpace c) && c `notElem` ("\\;,#\"[](){}<>|" :: String)
 
 -- | Wrap a refinement insertion in parentheses, unless it does not need them: a
 -- bare atom (no internal whitespace, e.g. @x@, @refl@, @recBOT@) and a term that

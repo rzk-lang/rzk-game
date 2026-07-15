@@ -70,14 +70,15 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- 'main' (or a test entry point) from the result of 'loadGame', then threaded
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
-  { envChapters :: [Chapter]
+  { envTitle    :: T.Text
+  , envChapters :: [Chapter]
   , envSections :: [Section]
   , envSlots    :: [Slot]
   , envLevels   :: [Level]
   }
 
-mkGameEnv :: [Chapter] -> GameEnv
-mkGameEnv chapters = GameEnv chapters secs (slotsOfSections secs)
+mkGameEnv :: T.Text -> [Chapter] -> GameEnv
+mkGameEnv title chapters = GameEnv title chapters secs (slotsOfSections secs)
   [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
   where secs = chaptersSections chapters
 
@@ -85,17 +86,18 @@ mkGameEnv chapters = GameEnv chapters secs (slotsOfSections secs)
 gameJsonKey :: MisoString
 gameJsonKey = "rzk-game-json"
 
--- | Read the stashed @game.json@, build the chapters, and return them. Any
--- failure (no bundle, malformed JSON, empty game) returns the built-in fallback.
-loadGame :: IO [Chapter]
+-- | Read the stashed @game.json@, build the title and chapters, and return them.
+-- Any failure (no bundle, malformed JSON, empty game) returns the built-in
+-- fallback.
+loadGame :: IO (T.Text, [Chapter])
 loadGame = do
   mjson <- getLocalStorage gameJsonKey
   case mjson of
     Just s
       | let t = fromMisoString s, not (T.null t)
-      , Right chapters <- buildGame (encodeUtf8 t)
-      , not (null chapters) -> pure chapters
-    _ -> pure Content.gameChapters
+      , Right (title, chapters) <- buildGame (encodeUtf8 t)
+      , not (null chapters) -> pure (title, chapters)
+    _ -> pure (Content.gameTitle, Content.gameChapters)
 
 -- | UI state. The current position is a /slot/ index; solved puzzles, viewed
 -- prose, pre-test answers, and unlock overrides are persisted to @localStorage@.
@@ -218,8 +220,8 @@ data Action
 
 main :: IO ()
 main = do
-  chapters     <- loadGame
-  let env       = mkGameEnv chapters
+  (title, chapters) <- loadGame
+  let env       = mkGameEnv title chapters
   importResult <- applyPendingImport env
 #ifdef INTERACTIVE
   live defaultEvents (mkApp env importResult)
@@ -242,8 +244,8 @@ foreign export javascript "hs_progresscheck" hsProgressCheck :: IO ()
 -- cannot: 'getLocalStorage' → 'buildGame' → 'checkLevel'.
 hsGameCheck :: IO ()
 hsGameCheck = do
-  chapters <- loadGame
-  let env  = mkGameEnv chapters
+  (title, chapters) <- loadGame
+  let env  = mkGameEnv title chapters
       secs = envSections env
       lvls = envLevels env
   putStrLn ("loaded sections: " <> show (length secs))
@@ -276,8 +278,8 @@ hsGameCheck = do
 -- wrong-version archive is rejected and changes nothing.
 hsProgressCheck :: IO ()
 hsProgressCheck = do
-  chapters <- loadGame
-  let env = mkGameEnv chapters
+  (title, chapters) <- loadGame
+  let env = mkGameEnv title chapters
   -- Seed a representative slice of player data.
   setLocalStorage progressKey      "0,2,5"
   setLocalStorage viewedKey        "morphisms-intro,functions-intro"
@@ -321,7 +323,7 @@ hsSelftest :: IO ()
 hsSelftest = do
   -- The self-test exercises the full built-in game (15 levels, fixed ids and
   -- order), independent of whatever game.json a build happens to load.
-  let env          = mkGameEnv Content.gameChapters
+  let env          = mkGameEnv Content.gameTitle Content.gameChapters
       gameLevels   = envLevels   env
       gameSections = envSections env
       slots        = envSlots    env
@@ -1009,7 +1011,7 @@ viewModel :: GameEnv -> props -> Model -> View Model Action
 viewModel env _ m =
   H.div_ []
     [ H.header_ [ P.class_ "game" ]
-        [ H.h1_ [] [ text "Rzk Game" ]
+        [ H.h1_ [] [ text (ms (envTitle env)) ]
         , H.p_ [ P.class_ "tagline" ]
             [ text "An interactive Rzk proof game — fill the holes." ]
         ]

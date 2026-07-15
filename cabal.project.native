@@ -10,12 +10,12 @@
 --   cabal --project-file=cabal.project.native run  rzk-game-bundle
 packages: .
 
--- Kept in lockstep with cabal.project: the v0.9.1 release (carries the hole
--- fixes #261/#262/#263/#267; see cabal.project for the details).
+-- Kept in lockstep with cabal.project: the v0.10.0 release (a performance
+-- release, language unchanged; see cabal.project for the details).
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 127af12e73f95a032385cd948762ae9fa7363bab
+  tag: 78ac05a61c7eb04a8db1d27e9a40e342b8fa1d2e
   subdir: rzk
 
 package rzk
