@@ -51,7 +51,8 @@ against.
 
 ## The Table of Contents
 
-The table of contents is `game.yaml`. It holds a title and an ordered list of
+The table of contents is `game.yaml`. It holds a title (shown as the heading at
+the top of the page, so a game reads under its own name) and an ordered list of
 `chapters`. A chapter has an optional `title` and an ordered list of `sections`.
 An untitled chapter renders its sections at the top level, so a flat game is just
 one untitled chapter. A section has an `id`, a `title`, and ordered `items`. Each
