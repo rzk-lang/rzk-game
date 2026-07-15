@@ -4,18 +4,21 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-16
+
 ### Added
 
-- The header title now comes from the game's `title:` in `game.yaml`, so a downstream game shows its own name instead of the hard-coded "Rzk Game".
+- The header title now comes from the game's `title:` in `game.yaml`, so a downstream game shows its own name instead of the hard-coded "Rzk Game" ([#50](https://github.com/rzk-lang/rzk-game/pull/50)).
 
 ### Changed
 
-- Re-pinned rzk to the [v0.10.0](https://github.com/rzk-lang/rzk/releases/tag/v0.10.0) release, a performance release. Its new core typechecks roughly nine times faster and uses far less memory, so holes resolve and levels check noticeably quicker in the browser; the language is unchanged, so every level checks as before.
-- The native bundler now needs GHC 9.8 or newer (rzk v0.10.0's minimum), so CI moved off 9.6.7 (the flake dev shell to 9.8.4, the ghcup bundler job to 9.8.2). The wasm toolchain (9.12) already satisfied it.
+- Re-pinned rzk to the [v0.10.0](https://github.com/rzk-lang/rzk/releases/tag/v0.10.0) release, a performance release. Its new core typechecks roughly nine times faster and uses far less memory, so holes resolve and levels check noticeably quicker in the browser; the language is unchanged, so every level checks as before ([#50](https://github.com/rzk-lang/rzk-game/pull/50)).
+- Bumped miso to 1.12.0 ([#49](https://github.com/rzk-lang/rzk-game/pull/49)).
+- The native bundler now needs GHC 9.8 or newer (rzk v0.10.0's minimum), so CI moved off 9.6.7 (the flake dev shell to 9.8.4, the ghcup bundler job to 9.8.2). The wasm toolchain (9.12) already satisfied it ([#50](https://github.com/rzk-lang/rzk-game/pull/50)).
 
 ### Fixed
 
-- A tap-to-fill move on a named hole (`?goal`) now replaces the whole hole; previously only the leading `?` was removed, leaving the hole's name behind as a stray identifier that broke the term.
+- A tap-to-fill move on a named hole (`?goal`) now replaces the whole hole; previously only the leading `?` was removed, leaving the hole's name behind as a stray identifier that broke the term ([#50](https://github.com/rzk-lang/rzk-game/pull/50)).
 
 ## [0.3.1] - 2026-06-27
 
@@ -77,7 +80,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Progress export, import, and reset.
 - A Format action with an opt-in format-on-check.
 
-[Unreleased]: https://github.com/rzk-lang/rzk-game/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/rzk-lang/rzk-game/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/rzk-lang/rzk-game/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/rzk-lang/rzk-game/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/rzk-lang/rzk-game/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rzk-lang/rzk-game/compare/v0.1.0...v0.2.0
