@@ -209,6 +209,18 @@ main = do
   check "a non-matching when-goal does not fire"
     (not (hintMatchesGoal (Hint "text" (Just "nonsense")) "hom A x x"))
 
+  -- Tap-to-refine removes the whole hole token, including a hole's name: a move
+  -- on a named hole '?goal' must not leave 'goal' behind as a stray identifier.
+  putStrLn "== tap-to-refine: a named hole is replaced whole, not just its ? =="
+  check "a bare hole is replaced"
+    (refineFirstHole "x" "f ? g" == "f x g")
+  check "a named hole drops its name too"
+    (refineFirstHole "x" "f ?goal g" == "f x g")
+  check "a named hole at the end of the term"
+    (refineFirstHole "x" "f ?h1" == "f x")
+  check "only the first hole is refined, later holes are untouched"
+    (refineFirstHole "x" "(?foo , ?bar)" == "(x , ?bar)")
+
   -- The reveal policy: plain hints are revealed one at a time; a contextual
   -- (when-goal) hint shows only while it matches and is never reached by the
   -- manual reveal, so it never appears out of context.

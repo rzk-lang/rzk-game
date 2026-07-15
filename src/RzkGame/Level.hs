@@ -394,10 +394,14 @@ checkLevelPure lvl editable =
       mapMaybe toEditableLine
         (maybeToList (locationLine =<< locationOfTypeError err))
 
--- | Tap-to-refine: replace the first hole (@?@) in the text with the given
--- insertion. This is how a tap turns into an edit — the engine re-checks the
--- rewritten text, so no engine-side refinement logic is needed. If there is no
--- hole, the text is returned unchanged.
+-- | Tap-to-refine: replace the first hole in the text with the given insertion.
+-- This is how a tap turns into an edit — the engine re-checks the rewritten
+-- text, so no engine-side refinement logic is needed. If there is no hole, the
+-- text is returned unchanged.
+--
+-- A hole is @?@ optionally followed by a name (@?goal@), so the whole token is
+-- removed, not just the leading @?@: dropping only the @?@ would leave the name
+-- dangling as a stray identifier and break the term.
 --
 -- The insertion is parenthesised (see 'parenthesize') so an application spine or
 -- a lambda cannot re-associate or fail to parse in the hole's position.
@@ -405,7 +409,14 @@ refineFirstHole :: Text -> Text -> Text
 refineFirstHole insertion src =
   case T.breakOn "?" src of
     (_, after) | T.null after -> src
-    (before, after)           -> before <> parenthesize insertion <> T.drop 1 after
+    (before, after)           ->
+      before <> parenthesize insertion <> T.dropWhile isHoleNameChar (T.drop 1 after)
+
+-- | Does this character continue a hole name after the leading @?@? Mirrors
+-- rzk's @HoleIdentToken@ (@?@ then a run of anything that is not whitespace or a
+-- term delimiter), so a named hole @?goal@ is consumed as one token.
+isHoleNameChar :: Char -> Bool
+isHoleNameChar c = not (isSpace c) && c `notElem` ("\\;,#\"[](){}<>|" :: String)
 
 -- | Wrap a refinement insertion in parentheses, unless it does not need them: a
 -- bare atom (no internal whitespace, e.g. @x@, @refl@, @recBOT@) and a term that

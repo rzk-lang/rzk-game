@@ -13,6 +13,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Re-pinned rzk to the [v0.10.0](https://github.com/rzk-lang/rzk/releases/tag/v0.10.0) release, a performance release. Its new core typechecks roughly nine times faster and uses far less memory, so holes resolve and levels check noticeably quicker in the browser; the language is unchanged, so every level checks as before.
 - The native bundler now needs GHC 9.8 or newer (rzk v0.10.0's minimum), so CI moved off 9.6.7 (the flake dev shell to 9.8.4, the ghcup bundler job to 9.8.2). The wasm toolchain (9.12) already satisfied it.
 
+### Fixed
+
+- A tap-to-fill move on a named hole (`?goal`) now replaces the whole hole; previously only the leading `?` was removed, leaving the hole's name behind as a stray identifier that broke the term.
+
 ## [0.3.1] - 2026-06-27
 
 ### Fixed
