@@ -37,11 +37,15 @@ import           RzkGame.Spec
 -- files map carries every referenced level file — front-matter parsed, body kept
 -- — inlined by path. We resolve each item's @file@ against that map, read its
 -- metadata and prose, split the puzzle body into prelude/template/solution,
--- recover the goal from the template, and add the placement metadata.
-buildGame :: ByteString -> Either Text [Chapter]
+-- recover the goal from the template, and add the placement metadata. The
+-- config's title is returned alongside the chapters so the UI can show the
+-- game's own name (e.g. in the header) rather than a hard-coded one.
+buildGame :: ByteString -> Either Text (Text, [Chapter])
 buildGame bs = do
   bundle <- first (("game.json: " <>) . T.pack) (eitherDecodeStrict' bs)
-  traverse (chapterFrom (bundleFiles bundle)) (gsChapters (bundleConfig bundle))
+  let cfg = bundleConfig bundle
+  chapters <- traverse (chapterFrom (bundleFiles bundle)) (gsChapters cfg)
+  pure (gsTitle cfg, chapters)
 
 chapterFrom :: Map Text FileSpec -> ChapterSpec -> Either Text Chapter
 chapterFrom files c =

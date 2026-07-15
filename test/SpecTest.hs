@@ -22,7 +22,7 @@ import qualified Data.Text            as T
 import           System.Exit          (exitFailure)
 import           Data.IORef
 
-import           RzkGame.Content      (gameLevels, gameChapters)
+import           RzkGame.Content      (gameLevels, gameChapters, gameTitle)
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
@@ -94,17 +94,18 @@ main = do
   --    in their intros and long stacked preludes).
   putStrLn "== buildGame: the whole game round-trips through a JSON bundle =="
   case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameChapters))) of
-    Left err   -> check ("buildGame error: " <> T.unpack err) False
-    Right chs  -> do
+    Left err          -> check ("buildGame error: " <> T.unpack err) False
+    Right (title, chs) -> do
       check "round-trips to all chapters" (length chs == length gameChapters)
       check "chapters equal RzkGame.Content" (chs == gameChapters)
+      check "title round-trips from the config" (title == "Round-trip")
 
   -- 4. Every loaded level actually plays: its template has holes, its reference
   --    solution solves. This runs the real rzk type-checker on the loaded model.
   putStrLn "== play: every loaded level holes on its template and solves =="
   case buildGame (BL.toStrict (encode (bundleFor "Play" gameChapters))) of
-    Left err   -> check ("buildGame error: " <> T.unpack err) False
-    Right chs  -> flip mapM_ (loadedLevels chs) $ \lvl -> do
+    Left err       -> check ("buildGame error: " <> T.unpack err) False
+    Right (_, chs) -> flip mapM_ (loadedLevels chs) $ \lvl -> do
       check (T.unpack (levelTitle lvl) <> ": template holes")
             (isHoles (checkLevel lvl (levelTemplate lvl)))
       check (T.unpack (levelTitle lvl) <> ": solution solves")
@@ -118,8 +119,10 @@ main = do
   case ejson of
     Left _     -> putStrLn "skip - public/game.json not found (run `make bundle`)"
     Right json -> case buildGame json of
-      Left err   -> check ("buildGame on public/game.json: " <> T.unpack err) False
-      Right chs  -> check "bundled chapters equal RzkGame.Content" (chs == gameChapters)
+      Left err           -> check ("buildGame on public/game.json: " <> T.unpack err) False
+      Right (title, chs) -> do
+        check "bundled chapters equal RzkGame.Content" (chs == gameChapters)
+        check "bundled title equals RzkGame.Content" (title == gameTitle)
 
   -- 6. The progress-archive codec round-trips, rejects an unknown version, and
   --    drops non-string ("junk") values. Order is not significant, so compare

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The header title now comes from the game's `title:` in `game.yaml`, so a downstream game shows its own name instead of the hard-coded "Rzk Game".
+
 ### Changed
 
 - Re-pinned rzk to the [v0.10.0](https://github.com/rzk-lang/rzk/releases/tag/v0.10.0) release, a performance release. Its new core typechecks roughly nine times faster and uses far less memory, so holes resolve and levels check noticeably quicker in the browser; the language is unchanged, so every level checks as before.

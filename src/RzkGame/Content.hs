@@ -7,7 +7,8 @@
 -- 'gameLevels' is derived from them, in the same global order as before, so the
 -- index-keyed progress and drafts stay compatible.
 module RzkGame.Content
-  ( gameLevels
+  ( gameTitle
+  , gameLevels
   , gameChapters
   , gameSections
   , gameSlots
@@ -34,6 +35,12 @@ import qualified Data.Text     as T
 import           RzkGame.Format (formatFixpoint)
 import           RzkGame.Level
 import           RzkGame.Section
+
+-- | The game's title, shown in the header. Mirrors @game/game.yaml@'s @title:@
+-- (the built-in game and the authored @game/@ must agree; the spec suite pins
+-- it). A loaded game supplies its own, so a downstream game renames the header.
+gameTitle :: Text
+gameTitle = "Rzk Game"
 
 -- | The levels, in play order, easiest first, derived from 'gameSections'. The
 -- global order is @[my-id, const-triangle, rut, lut, map-point, ap-hom, compose,
