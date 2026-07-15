@@ -97,7 +97,7 @@ jobs:
         id: setup
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6.7'
+          ghc-version: '9.8.2'
           cabal-version: '3.12'
 
       - name: 💾 Cache the cabal store and build outputs
@@ -109,9 +109,9 @@ jobs:
           path: |
             ${{ steps.setup.outputs.cabal-store }}
             dist-newstyle
-          key: bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
+          key: bundler-cabal-v2-${{ runner.os }}-ghc9.8.2-${{ hashFiles('cabal.project.native', 'rzk-game.cabal') }}
           restore-keys: |
-            bundler-cabal-v2-${{ runner.os }}-ghc9.6.7-
+            bundler-cabal-v2-${{ runner.os }}-ghc9.8.2-
 
       - name: 🔨 Build the bundler
         run: |
