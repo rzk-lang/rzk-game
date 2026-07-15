@@ -38,7 +38,7 @@ jobs:
           nix_conf: |
             experimental-features = nix-command flakes
 
-      # Cache the realised nix store for the native shell (GHC 9.6, cabal). A
+      # Cache the realised nix store for the native shell (GHC 9.8, cabal). A
       # separate key prefix from the wasm store so the two do not evict each
       # other; it only changes when the flake inputs do.
       - name: ❄️ Cache the nix store (native toolchain)
