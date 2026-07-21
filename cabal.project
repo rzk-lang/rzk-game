@@ -14,18 +14,20 @@ packages: .
 -- branches against the expected type (#247), which lets a bare hole sit inside
 -- a recOR branch (used by the unfolding-square level).
 --
--- Pinned to the v0.10.0 release, a performance release: a new internal core
--- (#289, #293) makes typechecking roughly nine times faster and far lighter on
--- memory, with the language unchanged, so every level checks exactly as before.
--- Building from source now needs GHC 9.8 or newer, which the wasm toolchain
--- (9.12) already provides. One behaviour change: the hint about a restriction
--- face or `recOR` guard overhanging the local tope context is off by default
--- (re-enable with `#set-option "warn-overhang" = "yes"`); genuinely disjoint
--- faces are still errors.
+-- Pinned to the v0.11.0 release, which adds inductive types: the `#data`
+-- command declares a datatype with generated induction/recursion principles,
+-- and `match` expressions give pattern-matching notation, both computing
+-- definitionally. In holes, offered moves are now guaranteed to mean what they
+-- render (#317/#318) and no longer shadow enclosing binders or claim a hidden
+-- scrutinee's name (#313/#315/#320/#324); a `U` goal offers the type formers
+-- (#314). Breaking upstream: the syntax forms deprecated since v0.5.0 are
+-- removed, and a binder repeated in one group is now an error (#321) — the
+-- built-in game uses neither. Still builds under GHC 9.8+ (the wasm toolchain
+-- provides 9.12).
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 78ac05a61c7eb04a8db1d27e9a40e342b8fa1d2e
+  tag: ec9004b6ccbccabf74eca5b0c6a38c6e89135eb3
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
