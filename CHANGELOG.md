@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+### Added
+
+- Inductive types reach the browser through the rzk [v0.11.0](https://github.com/rzk-lang/rzk/releases/tag/v0.11.0) bump: the `#data` command declares a datatype with generated induction and recursion principles, and `match` expressions give pattern-matching notation, both computing definitionally. A datatype hypothesis in a hole offers a `match` over it as a tap-to-fill move, and a `U` goal offers the type formers (`? → ?`, `Σ`, `=`, `Unit`, and datatypes in scope).
+
+### Changed
+
+- Re-pinned rzk to the [v0.11.0](https://github.com/rzk-lang/rzk/releases/tag/v0.11.0) release. Its hole moves are now guaranteed to mean the source text they render, and no longer shadow an enclosing binder or claim a hidden scrutinee's name, so a tapped move always resolves to what it shows. **Breaking for downstream games:** rzk removes the syntax forms deprecated since v0.5.0 (brace-delimited parameters, angle-bracket extension types, 4-argument `recOR`) and now rejects a binder repeated within one group, so a prelude written in the old syntax needs updating; the built-in game uses none of these.
+- Clarified in the authoring guide that an inventory entry's `type` is read only from the lemma's `#def`/`#postulate` declaration, so an `#assume`d or opaque-alias lemma needs an explicit `type:` to show a useful shape.
+
 ## [0.3.2] - 2026-07-16
 
 ### Added
