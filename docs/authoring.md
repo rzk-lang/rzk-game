@@ -235,9 +235,13 @@ is relevant.
 The `inventory` lists the prelude lemmas a level grants. It doubles as the
 "Allowed here" reference shown beside the moves. Each entry is a `name`, with an
 optional one-line `synopsis` and an optional `type`. The type is read from the
-prelude by name, so an entry is usually just a name and a synopsis; give an
-explicit `type` only to override what the prelude shows. A bare string entry is
-read as the name alone.
+`#def`/`#postulate` that declares the name, so an entry is usually just a name
+and a synopsis. Give an explicit `type` when the prelude cannot supply a useful
+one: an `#assume`d or `#variable` lemma shows no type at all (only `#def` and
+`#postulate` declarations are read), and an opaque alias such as
+`UnivalenceAxiom` reads better unfolded to its applicable shape, e.g.
+`(A : U) → (B : U) → Equiv (A = B) (Equiv A B)`. A bare string entry is read as
+the name alone.
 
 By default the inventory is informative only. After a check, the engine scans the
 identifiers the proof body uses, keeps those the prelude defines, and reports any
