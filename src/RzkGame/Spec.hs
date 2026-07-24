@@ -39,8 +39,8 @@ module RzkGame.Spec
   ) where
 
 import           Control.Applicative ((<|>))
-import           Data.Aeson          (FromJSON (..), Value (String), withObject,
-                                      (.!=), (.:), (.:?))
+import           Data.Aeson          (FromJSON (..), Value (Bool, String),
+                                      withObject, (.!=), (.:), (.:?))
 import           Data.Aeson.Types    (Parser)
 import           Data.Map.Strict     (Map)
 import           Data.Text           (Text)
@@ -50,7 +50,8 @@ import           Language.Rzk.Syntax     (printTree)
 import           RzkGame.Parse           (safeParseModule)
 import           Language.Rzk.Syntax.Abs
 
-import           RzkGame.Level       (Hint (..), InventoryEntry (..))
+import           RzkGame.Level       (Hint (..), InventoryEntry (..),
+                                      MovesMode (..))
 
 -- | The single JSON bundle the wasm app fetches: the @game.yaml@ as JSON under
 -- @config@, and every referenced level file inlined under @files@, keyed by the
@@ -186,10 +187,13 @@ data Meta = Meta
   , metaForbidden :: [Text]
   , metaHints     :: [Hint]
   , metaGated     :: Bool
+  , metaMoves         :: Maybe MovesMode -- ^ @moves:@ — the Moves-panel mode
+  , metaAutohideSingle :: Maybe Bool     -- ^ @autohide-single-move:@
+  , metaRequiresTyping :: Maybe Bool     -- ^ @requires-typing:@ badge override
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" [] [] [] False
+emptyMeta = Meta "" "" Nothing "" [] [] [] False Nothing Nothing Nothing
 
 
 instance FromJSON Meta where
@@ -202,6 +206,25 @@ instance FromJSON Meta where
     <*> o .:? "forbidden" .!= []
     <*> (o .:? "hints" .!= [] >>= traverse parseHint)
     <*> o .:? "gated" .!= False
+    <*> (o .:? "moves" >>= traverse parseMovesMode)
+    <*> o .:? "autohide-single-move"
+    <*> o .:? "requires-typing"
+
+-- | Read the @moves:@ Moves-panel mode: @on@ / @obscure@ / @off@ (case-folded).
+-- YAML folds the bare words @on@ and @off@ to booleans, so we also accept
+-- @true@/@false@ (as 'MovesOn'/'MovesOff') — an author writing @moves: off@ gets
+-- what they mean rather than a parse error. Any other value is a spec error, so a
+-- typo is caught at bundle time rather than silently defaulting.
+parseMovesMode :: Value -> Parser MovesMode
+parseMovesMode (Bool True)  = pure MovesOn
+parseMovesMode (Bool False) = pure MovesOff
+parseMovesMode (String t)   = case T.toLower (T.strip t) of
+  "on"      -> pure MovesOn
+  "obscure" -> pure MovesObscure
+  "off"     -> pure MovesOff
+  other     -> fail ("unknown moves mode " <> show other
+                       <> " (expected on, obscure, or off)")
+parseMovesMode v = fail ("moves: expected on, obscure, or off, got " <> show v)
 
 -- | Read one inventory entry. It is either a bare name string (the type is then
 -- looked up from the prelude) or @{ name, type?, synopsis? }@. 'InventoryEntry'

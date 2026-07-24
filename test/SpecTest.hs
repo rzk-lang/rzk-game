@@ -13,7 +13,8 @@
 module Main (main) where
 
 import           Control.Exception    (SomeException, try)
-import           Data.Aeson           (Value, encode, object, (.=))
+import           Data.Aeson           (Result (..), Value, encode, fromJSON,
+                                      object, (.=))
 import qualified Data.Aeson.Key       as Key
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
@@ -28,7 +29,7 @@ import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
 import           RzkGame.Save         (decodeArchive, encodeArchive)
 import           RzkGame.Format       (formatEditable, isWellFormatted)
-import           RzkGame.Spec         (goalFromTemplate, inventoryType,
+import           RzkGame.Spec         (Meta (..), goalFromTemplate, inventoryType,
                                       levelProse, splitLevelSource)
 import qualified Data.List            as List
 
@@ -65,7 +66,9 @@ main = do
         , levelSolution = "#def goal uses (A) : U\n  := A"
         , levelGoalName = "goal", levelGoalType = "U", levelGoalUses = us
         , levelInventory = [], levelForbidden = [], levelHints = []
-        , levelGated = False, levelConclusion = "" }
+        , levelGated = False, levelMoves = Nothing
+        , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelConclusion = "" }
   check "checkLevel solves when the goal-check declares the assumption"
     (checkLevel (usesLevel ["A"]) (levelSolution (usesLevel ["A"])) == Solved)
   check "checkLevel fails the same proof when the uses clause is dropped"
@@ -365,6 +368,72 @@ main = do
   check "a level that forbids nothing flags nothing"
     (null (forbiddenViolations (head gameLevels) "#def x := first (foo)"))
 
+  -- 10e. Moves-panel modes (the v0.5.0 cluster): the author-side `moves:` setting
+  --      and `autohide-single-move:` combine with the player's global "show moves"
+  --      preference in 'effectiveMovesMode'. The user preference is a hard cap
+  --      (off ⇒ no moves anywhere); autohide only degrades an otherwise-on hole
+  --      that has exactly one applicable move.
+  putStrLn "== moves modes: author setting, autohide, and the user cap =="
+  let l0       = head gameLevels
+      oneMove  = HoleView Nothing "g" [] [] [] [] ["\\ t → ?"]
+      twoMoves = HoleView Nothing "g" [] [] [] ["id-hom (?)"] ["\\ t → ?"]
+  check "a default level shows moves (On)"
+    (effectiveMovesMode True l0 twoMoves == MovesOn)
+  check "the user cap hides moves everywhere when off"
+    (effectiveMovesMode False (l0 { levelMoves = Just MovesOn }) twoMoves == MovesOff)
+  check "an author `moves: obscure` level obscures"
+    (effectiveMovesMode True (l0 { levelMoves = Just MovesObscure }) twoMoves == MovesObscure)
+  check "an author `moves: off` level hides the panel"
+    (effectiveMovesMode True (l0 { levelMoves = Just MovesOff }) twoMoves == MovesOff)
+  check "autohide obscures a single-move hole"
+    (effectiveMovesMode True (l0 { levelAutohideSingle = Just True }) oneMove == MovesObscure)
+  check "autohide leaves a multi-move hole On"
+    (effectiveMovesMode True (l0 { levelAutohideSingle = Just True }) twoMoves == MovesOn)
+  check "autohide never un-hides an `off` level"
+    (effectiveMovesMode True
+       (l0 { levelMoves = Just MovesOff, levelAutohideSingle = Just True }) oneMove == MovesOff)
+  check "requiresTyping honours the author override, else defaults False"
+    (requiresTyping (l0 { levelRequiresTyping = Just True })
+       && not (requiresTyping (l0 { levelRequiresTyping = Just False }))
+       && not (requiresTyping l0))
+  check "a `moves: off` level requires typing (overriding any flag)"
+    (requiresTyping (l0 { levelMoves = Just MovesOff })
+       && requiresTyping (l0 { levelMoves = Just MovesOff
+                             , levelRequiresTyping = Just False }))
+  check "a `moves: obscure` level does not itself require typing"
+    (not (requiresTyping (l0 { levelMoves = Just MovesObscure })))
+
+  -- 10f. The front-matter reader for the new fields: `moves:` (on/obscure/off),
+  --      `autohide-single-move:`, and `requires-typing:`. An unknown moves word
+  --      is a hard parse error, so a typo is caught at bundle time.
+  putStrLn "== moves front-matter: moves / autohide / requires-typing parse =="
+  let metaOf v = fromJSON v :: Result Meta
+  case metaOf (object [ "id" .= ("x" :: Text), "moves" .= ("obscure" :: Text)
+                      , "autohide-single-move" .= True, "requires-typing" .= True ]) of
+    Success m -> do
+      check "moves: obscure parses to MovesObscure" (metaMoves m == Just MovesObscure)
+      check "autohide-single-move parses"          (metaAutohideSingle m == Just True)
+      check "requires-typing parses"               (metaRequiresTyping m == Just True)
+    Error e -> check ("meta with moves failed to parse: " <> e) False
+  check "moves defaults to Nothing when absent"
+    (case metaOf (object ["id" .= ("x" :: Text)]) of
+       Success m -> metaMoves m == Nothing
+       Error _   -> False)
+  check "an unknown moves mode is rejected"
+    (case metaOf (object ["moves" .= ("sideways" :: Text)]) of
+       Error _   -> True
+       Success _ -> False)
+  -- YAML folds the bare words `on`/`off` to booleans, so `moves: off` reaches
+  -- the reader as `false`; it must still mean MovesOff (and `true` MovesOn).
+  check "moves: false (YAML off) parses to MovesOff"
+    (case metaOf (object ["moves" .= False]) of
+       Success m -> metaMoves m == Just MovesOff
+       Error _   -> False)
+  check "moves: true (YAML on) parses to MovesOn"
+    (case metaOf (object ["moves" .= True]) of
+       Success m -> metaMoves m == Just MovesOn
+       Error _   -> False)
+
   -- 11. Error ordering: a wrong-typed editable region renders an error whose
   --     first non-empty line is the headline mismatch, not the global context
   --     dump. The engine formats TopDown, so the message leads (LSP-style).
@@ -399,7 +468,9 @@ main = do
         , levelSolution = "#def foo (k : (x y : A) → A) : A\n  := ?"
         , levelGoalName = "foo", levelGoalType = "(k : (x y : A) → A) → A"
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
-        , levelHints = [], levelGated = False, levelConclusion = "" }
+        , levelHints = [], levelGated = False, levelMoves = Nothing
+        , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelConclusion = "" }
   check "a multi-variable binder in a hole context no longer crashes (rzk#263)"
     (case checkLevel crashLevel (levelTemplate crashLevel) of
        Holes _ -> True
@@ -417,7 +488,9 @@ main = do
         , levelSolution = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ y' p' → y' = x) refl y p"
         , levelGoalName = "rev", levelGoalType = "(A : U) → (x y : A) → (p : x = y) → y = x"
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
-        , levelHints = [], levelGated = False, levelConclusion = "" }
+        , levelHints = [], levelGated = False, levelMoves = Nothing
+        , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelConclusion = "" }
       badParen = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ z q → z = x)) ? ? ?"
   check "formatEditable no-ops on a layout-error fragment instead of crashing"
     (formatEditable badParen == badParen)
@@ -532,7 +605,10 @@ fileV (SPuzzle z) = object
         , "inventory" .= map entryV (levelInventory lvl) ]
         <> [ "forbidden" .= levelForbidden lvl | not (null (levelForbidden lvl)) ]
         <> [ "hints" .= map hintV (levelHints lvl) | not (null (levelHints lvl)) ]
-        <> [ "gated" .= True | levelGated lvl ] )
+        <> [ "gated" .= True | levelGated lvl ]
+        <> [ "moves" .= movesWord mm | Just mm <- [levelMoves lvl] ]
+        <> [ "autohide-single-move" .= b | Just b <- [levelAutohideSingle lvl] ]
+        <> [ "requires-typing" .= b | Just b <- [levelRequiresTyping lvl] ] )
   , "body" .= levelBody lvl
   ]
   where lvl = puzzleLevel z
@@ -567,6 +643,13 @@ levelBody lvl = T.concat
   ]
   where
     fenced role body = T.unlines (("```rzk " <> role) : T.lines body <> ["```", ""])
+
+-- | A Moves-panel mode as its @moves:@ front-matter word.
+movesWord :: MovesMode -> Text
+movesWord = \case
+  MovesOn      -> "on"
+  MovesObscure -> "obscure"
+  MovesOff     -> "off"
 
 bopppsWord :: Boppps -> Text
 bopppsWord = \case

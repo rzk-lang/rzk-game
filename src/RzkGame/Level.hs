@@ -14,12 +14,15 @@ module RzkGame.Level
   ( Level (..)
   , InventoryEntry (..)
   , Hint (..)
+  , MovesMode (..)
   , CheckResult (..)
   , HoleView (..)
   , MoveKind (..)
   , checkLevel
   , holeActions
   , allowedActions
+  , effectiveMovesMode
+  , requiresTyping
   , refineFirstHole
   , renderResult
   , resultErrorLines
@@ -35,7 +38,7 @@ import           Control.DeepSeq      (NFData, force)
 import           Control.Exception    (SomeException, evaluate, try)
 import           Data.Char            (isDigit, isSpace)
 import           Data.List            (nub)
-import           Data.Maybe           (mapMaybe, maybeToList)
+import           Data.Maybe           (fromMaybe, mapMaybe, maybeToList)
 import           Data.String          (fromString)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
@@ -67,6 +70,19 @@ data InventoryEntry = InventoryEntry
   , invSynopsis :: Maybe Text  -- ^ optional one-line prose note
   } deriving (Eq, Show)
 
+-- | How the tap-to-fill Moves panel is presented on a level (the author-side
+-- @moves:@ setting; see 'effectiveMovesMode'):
+--
+--   * 'MovesOn' — the panel offers every applicable move as a button (the
+--     default, today's behaviour);
+--   * 'MovesObscure' — the moves are withheld behind a "one move — find it"
+--     nudge with a reveal control, so a level is not trivialised by tapping
+--     through, but a stuck player can still peek;
+--   * 'MovesOff' — no moves are offered at all, forcing the player to write the
+--     proof by hand.
+data MovesMode = MovesOn | MovesObscure | MovesOff
+  deriving (Eq, Show)
+
 -- | A single level. The text fields are Rzk source or human-readable prose.
 data Level = Level
   { levelTitle      :: Text   -- ^ short title
@@ -82,6 +98,9 @@ data Level = Level
   , levelForbidden  :: [Text] -- ^ eliminators denied here (dropped from the moves)
   , levelHints      :: [Hint] -- ^ authored hints, revealed on request
   , levelGated      :: Bool   -- ^ make an inventory or forbidden violation fail the check
+  , levelMoves          :: Maybe MovesMode -- ^ author-side Moves-panel mode ('Nothing' ⇒ 'MovesOn')
+  , levelAutohideSingle :: Maybe Bool  -- ^ obscure a hole with a single move ('Nothing' ⇒ off)
+  , levelRequiresTyping :: Maybe Bool  -- ^ author override for the "requires typing" badge
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -478,6 +497,48 @@ holeActions HoleView{..} =
 allowedActions :: Level -> HoleView -> [(MoveKind, Text)]
 allowedActions lvl h =
   [ a | a@(_, ins) <- holeActions h, moveHead ins `notElem` levelForbidden lvl ]
+
+-- | The effective Moves-panel mode for a focused hole, combining the player's
+-- global preference with the level's author-side settings:
+--
+--   * the player's @showMoves@ preference is a hard cap — when it is off the
+--     player has asked to type every proof by hand, so the panel is 'MovesOff'
+--     everywhere regardless of the level's own setting;
+--   * otherwise the base mode is the level's 'levelMoves' (defaulting to
+--     'MovesOn'), except that an @autohide-single-move@ level ('levelAutohideSingle')
+--     degrades a 'MovesOn' hole with exactly one applicable move to 'MovesObscure',
+--     so a forced move is not simply handed over.
+--
+-- The single-move test uses 'allowedActions', so a move the level forbids does
+-- not count towards the one.
+effectiveMovesMode :: Bool -> Level -> HoleView -> MovesMode
+effectiveMovesMode showMoves lvl h
+  | not showMoves = MovesOff
+  | base == MovesOn && autohide && length (allowedActions lvl h) == 1 = MovesObscure
+  | otherwise     = base
+  where
+    base     = fromMaybe MovesOn (levelMoves lvl)
+    autohide = fromMaybe False   (levelAutohideSingle lvl)
+
+-- | Whether a level should carry the "requires typing" badge — true when it
+-- cannot be solved by tapping moves alone, so the player must write part of the
+-- proof by hand.
+--
+-- A @moves: off@ level ('MovesOff') hard-hides the panel, so there are no taps to
+-- solve by: it requires typing by construction, and that wins over any override.
+-- An @obscure@ level does not — the moves can still be revealed and tapped. For an
+-- @on@/@obscure@ level the author may pin the badge with 'levelRequiresTyping';
+-- absent an override we fall back to an automatic classification.
+--
+-- The automatic side is a stub for now (always 'False'): the tap-through walk
+-- over the reference solution lands in a follow-up. This function is the single
+-- seam it plugs into, so wiring it up later needs no change here or in the UI.
+requiresTyping :: Level -> Bool
+requiresTyping lvl
+  | levelMoves lvl == Just MovesOff = True
+  | otherwise                       = fromMaybe autoClassify (levelRequiresTyping lvl)
+  where
+    autoClassify = False  -- TODO(typing-badge): = not (tapThroughReference lvl)
 
 -- | The head identifier of a move's filler term: its leading whitespace-delimited
 -- token (@first (?)@ → @first@, @recOR ( … )@ → @recOR@). Used to match a move

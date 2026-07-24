@@ -165,6 +165,9 @@ The front-matter holds the intrinsic metadata.
 - `hints` is an ordered list. See *Hints* below.
 - `gated`, when `true`, makes an inventory or forbidden-move violation fail the
   check. It defaults to `false`.
+- `moves`, `autohide-single-move`, and `requires-typing` control the Moves panel
+  and the "requires typing" badge. See *The Moves panel* below. All three are
+  optional and default off.
 
 The body has three roles of fenced rzk block, with surrounding prose.
 
@@ -262,6 +265,34 @@ prelude-defined names are kept, so local hypotheses and keywords are ignored. A
 level with an empty inventory gates nothing. Importantly, before turning `gated`
 on, check that the reference solution uses only granted names and no forbidden
 move, since a gated level whose solution trips its own gate cannot be solved.
+
+## The Moves panel
+
+The Moves panel offers tap-to-fill steps for the focused hole: the introduction
+and elimination moves the goal admits, plus the granted inventory lemmas. Three
+optional front-matter fields tune how much it gives away.
+
+- `moves` sets the panel's mode for the whole level.
+  - `on` (the default) shows the moves as buttons.
+  - `obscure` hides the buttons behind a nudge that reports how many moves fit
+    and offers a *Reveal* button, so the player is asked to find the step before
+    being shown it.
+  - `off` hides the panel entirely, so the proof must be typed by hand.
+- `autohide-single-move`, when `true`, degrades a hole to `obscure` only when
+  exactly one move applies, and leaves it `on` otherwise. Use it to stop the
+  panel from simply handing over a forced step, while still helping where there
+  is a genuine choice. It has no effect on an `obscure` or `off` level.
+- `requires-typing`, when `true`, adds a "⌨ typing" badge to the level's heading
+  and its tile, flagging that the level cannot be solved by taps alone. A level
+  with `moves: off` carries the badge automatically (there are no taps to solve
+  by), so the field is only needed for an `on`/`obscure` level whose reference
+  solution has a step no move produces.
+
+Two things are worth knowing. A player can hide the panel everywhere from the
+action bar; that global preference wins, so an `on` or `obscure` level shows
+nothing when the player has opted out. And `off`/`on` are YAML booleans — `moves:
+off` parses as `false` and `moves: on` as `true` — which the reader accepts as
+`off` and `on`; either spelling works, and `obscure` is a plain string.
 
 ## How to Make a Good Puzzle
 

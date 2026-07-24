@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Three optional level front-matter fields tune the Moves panel. `moves` sets the panel mode: `on` (the default, unchanged behaviour), `obscure` (hide the buttons behind a nudge and a *Reveal* control, so the player is asked to find the step first), or `off` (hide the panel, so the proof is typed by hand). `autohide-single-move`, when `true`, degrades a hole to `obscure` only when exactly one move applies, so the panel does not simply hand over a forced step. `requires-typing`, when `true`, adds a "⌨ typing" badge to a level that cannot be solved by taps alone; a `moves: off` level carries it automatically. Existing games need no change: every field defaults off.
+- A global "Show moves" toggle in the action bar hides the Moves panel across every level; the preference persists and overrides a level's own `moves` setting.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added
