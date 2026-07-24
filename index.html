@@ -99,6 +99,10 @@
     .tile-prose   { color: #3a5a8a; background: #eef3fb; border-color: #c2d2ea; }
     .tile-pretest { color: #9a7a1a; background: #fff8e8; border-color: #ecd9a6; }
     .tile-star    { color: #b8860b; border-style: dashed; }
+    /* A level that needs typing (can't be solved by taps alone): a small keyboard
+       glyph in the tile's top-left corner. */
+    .tile-typing-mark { position: absolute; top: 0; left: .15rem; font-size: .55rem;
+                        line-height: 1; color: #7a6ca8; }
     /* States. */
     .tile.done, .tile.solved { background: #e7f7e7; border-color: #7c7; color: #2a7a2a; }
     .tile.solved .tile-num { color: #6a9a6a; }
@@ -129,7 +133,22 @@
     .action-bar .buttons button { margin: 0; }
     .format-on-check { font-size: .85rem; color: #555; cursor: pointer;
                        margin-left: auto; user-select: none; }
+    .show-moves { font-size: .85rem; color: #555; cursor: pointer;
+                  user-select: none; }
     .actions { margin: .3rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
+    /* Obscured / hidden Moves panel (the author-side moves: obscure/off setting
+       and the single-move autohide): a quiet nudge plus a reveal control, rather
+       than the full row of move buttons. */
+    .moves-obscure { display: flex; align-items: baseline; flex-wrap: wrap;
+                     gap: .5rem; margin: .3rem 0; }
+    .moves-obscure .muted { margin: 0; }
+    button.moves-reveal { font-size: .85rem; padding: .2rem .6rem; margin: 0; }
+    .moves-off { margin: .3rem 0; }
+    /* The "requires typing" chip beside a level title. */
+    .typing-badge { display: inline-block; margin-left: .5rem; padding: .05rem .4rem;
+                    font-size: .7rem; font-weight: 600; vertical-align: middle;
+                    color: #5a4c88; background: #eeeaf7; border: 1px solid #cfc4ea;
+                    border-radius: 999px; white-space: nowrap; }
     button { font-size: 1rem; padding: .4rem .9rem; margin-right: .5rem; }
     /* Primary (Check) / secondary (Reset) hierarchy for the main actions. */
     .buttons button.primary { background: #2563eb; color: #fff;
