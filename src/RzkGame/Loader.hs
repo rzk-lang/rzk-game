@@ -94,6 +94,9 @@ puzzleFrom files ref = do
         , levelForbidden  = metaForbidden m
         , levelHints      = metaHints m
         , levelGated      = metaGated m
+        , levelMoves          = metaMoves m
+        , levelAutohideSingle = metaAutohideSingle m
+        , levelRequiresTyping = metaRequiresTyping m
         , levelConclusion = conclusion
         }
   pure PuzzleItem

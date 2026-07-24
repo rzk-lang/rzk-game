@@ -75,12 +75,21 @@ data GameEnv = GameEnv
   , envSections :: [Section]
   , envSlots    :: [Slot]
   , envLevels   :: [Level]
+  , envRequiresTyping :: [Bool]  -- ^ per-level "requires typing" badge, parallel to 'envLevels'
   }
 
 mkGameEnv :: T.Text -> [Chapter] -> GameEnv
-mkGameEnv title chapters = GameEnv title chapters secs (slotsOfSections secs)
-  [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
-  where secs = chaptersSections chapters
+mkGameEnv title chapters =
+  GameEnv title chapters secs (slotsOfSections secs) levels (map requiresTyping levels)
+  where
+    secs   = chaptersSections chapters
+    levels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
+
+-- | Whether the puzzle at a global puzzle index carries the "requires typing"
+-- badge (see 'RzkGame.Level.requiresTyping'). Read from the cached 'envRequiresTyping'
+-- so the (eventually expensive) classification runs at most once per level.
+requiresTypingAt :: GameEnv -> Int -> Bool
+requiresTypingAt env i = head (drop i (envRequiresTyping env))
 
 -- | @localStorage@ key under which @index.js@ stashes the fetched @game.json@.
 gameJsonKey :: MisoString
@@ -116,6 +125,8 @@ data Model = Model
   , _formatOnCheck :: Bool                  -- ^ format the editable region before each check
   , _hintsShown :: Int                      -- ^ how many hints the player has revealed (per-session)
   , _dirty      :: Bool                      -- ^ editable changed since the shown result was checked
+  , _showMoves  :: Bool                      -- ^ global player preference: show the Moves panel at all
+  , _movesRevealed :: Bool                   -- ^ obscured moves revealed for the focused hole (per-session)
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -159,6 +170,12 @@ hintsShown = lens _hintsShown $ \m v -> m { _hintsShown = v }
 
 dirty :: Lens Model Bool
 dirty = lens _dirty $ \m v -> m { _dirty = v }
+
+showMoves :: Lens Model Bool
+showMoves = lens _showMoves $ \m v -> m { _showMoves = v }
+
+movesRevealed :: Lens Model Bool
+movesRevealed = lens _movesRevealed $ \m v -> m { _movesRevealed = v }
 
 -- | The slot currently being shown.
 currentSlot :: GameEnv -> Model -> Slot
@@ -214,6 +231,8 @@ data Action
   | CancelReset                -- ^ dismiss the reset confirmation
   | DismissImportMsg           -- ^ dismiss the import result banner
   | SetFormatOnCheck Bool      -- ^ toggle (and persist) the format-on-check preference
+  | SetShowMoves Bool          -- ^ toggle (and persist) the global "show Moves panel" preference
+  | RevealMoves                -- ^ reveal the obscured moves for the focused hole
   | RevealHint                 -- ^ reveal the next hidden hint (progressive disclosure)
   | CopyText MisoString        -- ^ copy the given text to the clipboard
   -- No 'Eq': 'DOMRef' (a 'JSVal') has none. miso does not require 'Eq' on actions.
@@ -578,7 +597,7 @@ copyToClipboard t = [js| navigator.clipboard.writeText(${t}); |]
 
 initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False)
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -587,12 +606,12 @@ enterSlotPure :: GameEnv -> Int -> Model -> Model
 enterSlotPure env i m = case slotAt env i of
   SlotProse _ _ ->
     m { _slotIx = i, _editable = "", _result = NotChecked, _history = []
-      , _hintsShown = 0, _dirty = False }
+      , _hintsShown = 0, _dirty = False, _movesRevealed = False }
   SlotPuzzle _ _ z ->
     let t = levelTemplate (puzzleLevel z)
     in m { _slotIx = i, _editable = ms t
          , _result = checkLevel (puzzleLevel z) t, _history = []
-         , _hintsShown = 0, _dirty = False }
+         , _hintsShown = 0, _dirty = False, _movesRevealed = False }
 
 -- localStorage keys.
 progressKey, viewedKey, pretestKey, unlockedKey :: MisoString
@@ -679,6 +698,18 @@ readFormatOnCheck = (== Just "1") <$> getLocalStorage formatOnCheckKey
 saveFormatOnCheck :: Bool -> IO ()
 saveFormatOnCheck b = setLocalStorage formatOnCheckKey (if b then "1" else "0")
 
+-- | The global "show the Moves panel" preference, stored as @"1"@ / @"0"@. Unlike
+-- format-on-check it defaults /on/: only an explicit @"0"@ reads as off, so a
+-- player who has never touched the toggle still sees the moves.
+showMovesKey :: MisoString
+showMovesKey = "rzk-game-show-moves"
+
+readShowMoves :: IO Bool
+readShowMoves = (/= Just "0") <$> getLocalStorage showMovesKey
+
+saveShowMoves :: Bool -> IO ()
+saveShowMoves b = setLocalStorage showMovesKey (if b then "1" else "0")
+
 -- | The persisted player state read at startup: the solved set, viewed prose,
 -- pre-test answers, unlock overrides, and the format-on-check preference. It is
 -- read by 'Init' and applied to the model by 'LoadState'. Bundling the reads
@@ -689,12 +720,13 @@ data LoadedState = LoadedState
   , lsPretest       :: Map T.Text PretestAnswer
   , lsUnlocked      :: Set T.Text
   , lsFormatOnCheck :: Bool
+  , lsShowMoves     :: Bool
   }
 
 readLoadedState :: GameEnv -> IO LoadedState
 readLoadedState env = LoadedState
   <$> readProgress env <*> readViewed <*> readPretest <*> readUnlocked
-  <*> readFormatOnCheck
+  <*> readFormatOnCheck <*> readShowMoves
 
 -- | Per-level draft storage. Each puzzle's in-progress text is saved under its
 -- own key, so the raw source needs no escaping (unlike a single packed value).
@@ -736,7 +768,7 @@ loadDraftAction env i = do
 -- load, not player data.
 playerDataKeys :: GameEnv -> [MisoString]
 playerDataKeys env =
-  [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey]
+  [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey, showMovesKey]
     ++ [ k | i <- [0 .. length (envLevels env) - 1], k <- [draftKey env i, legacyDraftKey i] ]
 
 -- | Whether a key from an imported archive is player data we will restore. The
@@ -745,7 +777,7 @@ playerDataKeys env =
 isPlayerDataKey :: T.Text -> Bool
 isPlayerDataKey k =
   k `elem` map fromMisoString
-             [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey]
+             [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey, showMovesKey]
     || "rzk-game-draft-" `T.isPrefixOf` k
 
 -- | The scratch key @download.js@ stashes a chosen import file under, read once
@@ -819,6 +851,7 @@ updateModel env = \case
     history %= (e :)         -- a mistaken Reset can be undone
     let t = levelTemplate (nthLevel env ix)
     editable .= ms t
+    movesRevealed .= False
     setResult (checkLevel (nthLevel env ix) t)
     io_ (removeDraft env ix)     -- drop the draft so the template stays on next load
   Init -> do
@@ -836,6 +869,7 @@ updateModel env = \case
     pretest  .= lsPretest ls
     unlocked .= lsUnlocked ls
     formatOnCheck .= lsFormatOnCheck ls
+    showMoves .= lsShowMoves ls
     -- If slot 0 is prose, it has already been "visited" at mount, so fold it in.
     i <- use slotIx
     let v  = lsViewed ls
@@ -881,6 +915,7 @@ updateModel env = \case
     let e'  = maybeFormat foc (refineFirstHole ins (fromMisoString e))
         res = checkLevel (nthLevel env ix) e'
     editable .= ms e'
+    movesRevealed .= False    -- the hole advanced; re-obscure any revealed moves
     setResult res
     io_ (saveDraft env ix (ms e'))
     recordSolved ix res
@@ -891,6 +926,7 @@ updateModel env = \case
       (prev : rest, Just ix) -> do
         history  .= rest
         editable .= prev
+        movesRevealed .= False
         setResult (checkLevel (nthLevel env ix) (fromMisoString prev))
         io_ (saveDraft env ix prev)
       _ -> pure ()
@@ -931,12 +967,17 @@ updateModel env = \case
     unlocked .= Set.empty
     history  .= []
     formatOnCheck .= False    -- its key is player data too, cleared above
+    showMoves .= True         -- back to the default (moves visible)
     confirmReset .= False
     io (pure (SelectSlot 0))   -- back to the start; re-seeds the editor and viewed
   DismissImportMsg -> importMsg .= Nothing
   SetFormatOnCheck b -> do
     formatOnCheck .= b
     io_ (saveFormatOnCheck b)
+  SetShowMoves b -> do
+    showMoves .= b
+    io_ (saveShowMoves b)
+  RevealMoves -> movesRevealed .= True
   RevealHint -> withPuzzle $ \ix -> do
     -- The button walks the plain hints one at a time; contextual (when-goal)
     -- hints surface on their own, so the count never needs to pass the plain
@@ -962,10 +1003,11 @@ updateModel env = \case
     -- — a prose slot is marked viewed; a puzzle slot loads its template then its
     -- saved draft. Shared by 'SelectSlot' (a click) and 'HashNav' (back/forward).
     gotoSlot i = do
-      history    .= []
-      slotIx     .= i
-      hintsShown .= 0          -- a fresh level starts with its hints hidden again
-      mapOpen    .= False      -- collapse the map after a jump, back to content
+      history       .= []
+      slotIx        .= i
+      hintsShown    .= 0       -- a fresh level starts with its hints hidden again
+      movesRevealed .= False   -- and with any obscured moves hidden again
+      mapOpen       .= False   -- collapse the map after a jump, back to content
       io_ (setHash (slotAnchorAt env i))
       case slotAt env i of
         SlotProse _ p -> do
@@ -1199,14 +1241,18 @@ slotButton env m (i, s) =
                 | star      = icoStar
                 | pre       = icoPretest
                 | otherwise = icoCore
+            typing  = requiresTypingAt env ix
             note | star      = " (extra)"
                  | pre       = " (pre-test)"
                  | otherwise = ""
         in ( [roleCls] <> [ "current" | current ]
                        <> [ "solved" | doneThis ] <> [ "tile-locked" | locked ]
+                       <> [ "tile-typing" | typing ]
            , ico
            , [ H.span_ [ P.class_ "tile-num" ] [ text (ms (tshow (ix + 1))) ] ]
-           , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note )
+             <> [ H.span_ [ P.class_ "tile-typing-mark" ] [ text "⌨" ] | typing ]
+           , tshow (ix + 1) <> ". " <> levelTitle (puzzleLevel z) <> note
+               <> (if typing then " ⌨ requires typing" else "") )
 
 -- | The role icons, drawn as inline SVG so they inherit the tile's colour
 -- (@currentColor@) and stay crisp at any size. Each icon is a single @<path>@,
@@ -1316,7 +1362,8 @@ roleLabel = \case
 puzzleSlotView :: GameEnv -> Model -> T.Text -> Int -> PuzzleItem -> [View Model Action]
 puzzleSlotView env m sid ix z =
   [ breadcrumb env m sid
-  , H.h2_ [] [ text (ms (titleMark <> levelTitle lvl <> roleSuffix)) ]
+  , H.h2_ [] ( [ text (ms (titleMark <> levelTitle lvl <> roleSuffix)) ]
+                 <> [ typingBadge | requiresTypingAt env ix ] )
   -- Level intro prose, injected on creation; keyed by slot so it re-fires.
   , H.div_ [ P.class_ "prose"
            , key_ (ms ("intro-" <> show (_slotIx m)))
@@ -1366,6 +1413,15 @@ puzzleSlotView env m sid ix z =
              , hintsView m lvl
              , conclusionView m lvl solvedAccepted
              ]
+
+-- | The "requires typing" chip shown beside a level's title (like the ★ extra
+-- badge): a level that cannot be solved by tapping moves alone, so the player
+-- must write part of the proof by hand.
+typingBadge :: View Model Action
+typingBadge =
+  H.span_ [ P.class_ "typing-badge"
+          , P.title_ "This level needs some typing — it can't be solved by taps alone." ]
+    [ text "⌨ typing" ]
 
 -- | The self-assessment for a pre-test puzzle: two buttons, the current choice
 -- highlighted, and a remediation box if the player said they are not familiar.
@@ -1523,11 +1579,30 @@ editorView code errLines =
 movesView :: Level -> Model -> View Model Action
 movesView lvl m =
   case m ^. result of
-    Holes (h : _)
-      | moves@(_ : _) <- allowedActions lvl h ->
-          H.div_ [ P.class_ "actions" ]
-            [ moveButton kind ins | (kind, ins) <- moves ]
-    _ -> H.p_ [ P.class_ "muted" ] [ text "Moves appear here when a hole is in focus." ]
+    Holes (h : _) -> case effectiveMovesMode (m ^. showMoves) lvl h of
+      MovesOn                        -> panel (allowedActions lvl h)
+      MovesObscure | m ^. movesRevealed -> panel (allowedActions lvl h)
+                   | otherwise       -> obscureNudge (length (allowedActions lvl h))
+      MovesOff                       -> offNote
+    _ -> muted "Moves appear here when a hole is in focus."
+  where
+    muted t = H.p_ [ P.class_ "muted" ] [ text t ]
+    panel []    = muted "No moves apply to this hole — type the next step."
+    panel moves = H.div_ [ P.class_ "actions" ]
+      [ moveButton kind ins | (kind, ins) <- moves ]
+    offNote = H.p_ [ P.class_ "muted moves-off" ]
+      [ text "Moves are hidden here — write the proof yourself." ]
+    -- The obscure nudge: acknowledge how many moves fit without naming them, and
+    -- offer a reveal for a genuinely stuck player.
+    obscureNudge n = H.div_ [ P.class_ "moves-obscure" ]
+      [ H.p_ [ P.class_ "muted" ] [ text (ms (nudge n)) ]
+      , H.button_ [ P.class_ "secondary moves-reveal", H.onClick RevealMoves ]
+          [ text (if n == 1 then "Reveal move" else "Reveal moves") ]
+      ]
+    nudge :: Int -> T.Text
+    nudge n
+      | n <= 1    = "Only one move fits here — try to find it yourself, or reveal it."
+      | otherwise = tshow n <> " moves fit here — try to find the right one, or reveal them."
 
 -- | A two-part move button: a colour-coded chip naming the move kind (intro /
 -- give), then the filler term rendered with the same syntax highlighting as the
@@ -1566,6 +1641,10 @@ actionBar m =
             [ H.input_ [ P.type_ "checkbox", P.checked_ (m ^. formatOnCheck)
                        , H.onChecked (\(Checked b) -> SetFormatOnCheck b) ]
             , text " Format on check" ]
+        , H.label_ [ P.class_ "show-moves", P.title_ "Show the tap-to-fill Moves panel" ]
+            [ H.input_ [ P.type_ "checkbox", P.checked_ (m ^. showMoves)
+                       , H.onChecked (\(Checked b) -> SetShowMoves b) ]
+            , text " Show moves" ]
         ]
     ]
 
