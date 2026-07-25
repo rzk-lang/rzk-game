@@ -190,10 +190,11 @@ data Meta = Meta
   , metaMoves         :: Maybe MovesMode -- ^ @moves:@ — the Moves-panel mode
   , metaAutohideSingle :: Maybe Bool     -- ^ @autohide-single-move:@
   , metaRequiresTyping :: Maybe Bool     -- ^ @requires-typing:@ badge override
+  , metaAutoRequiresTyping :: Maybe Bool -- ^ @auto-requires-typing:@ — the bundle-time tap-through classification (not author-facing)
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" [] [] [] False Nothing Nothing Nothing
+emptyMeta = Meta "" "" Nothing "" [] [] [] False Nothing Nothing Nothing Nothing
 
 
 instance FromJSON Meta where
@@ -209,6 +210,7 @@ instance FromJSON Meta where
     <*> (o .:? "moves" >>= traverse parseMovesMode)
     <*> o .:? "autohide-single-move"
     <*> o .:? "requires-typing"
+    <*> o .:? "auto-requires-typing"
 
 -- | Read the @moves:@ Moves-panel mode: @on@ / @obscure@ / @off@ (case-folded).
 -- YAML folds the bare words @on@ and @off@ to booleans, so we also accept

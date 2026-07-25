@@ -1,5 +1,6 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The native bundle step: pack a @game.yaml@ and the level files it references
 -- into the single @game.json@ the wasm app fetches.
@@ -35,6 +36,10 @@ import           System.Directory     (createDirectoryIfMissing)
 import           System.Environment   (getArgs)
 import           System.Exit          (die)
 import           System.FilePath      (takeDirectory, (</>))
+
+import           RzkGame.Level        (tapThroughReference)
+import           RzkGame.Loader       (levelFromFileSpec)
+import           RzkGame.Spec         (FileSpec)
 
 main :: IO ()
 main = do
@@ -75,7 +80,25 @@ readLevelFile gameDir rel = do
               Left err  -> die ("Cannot parse front-matter of " <> T.unpack rel
                                   <> ":\n" <> show err)
               Right v   -> pure (v :: A.Value)
-  pure (A.object [ "meta" A..= meta, "body" A..= body ])
+  pure (A.object [ "meta" A..= withAutoTyping meta body, "body" A..= body ])
+
+-- | For a puzzle file, precompute the tap-through classification (whether the
+-- reference solution can be reached by taps alone) and record its negation under
+-- @auto-requires-typing@ in the file's front-matter. This runs the rzk
+-- type-checker at bundle time so the browser never has to (see
+-- 'RzkGame.Level.requiresTyping'). A file that is not a puzzle (no @template@ /
+-- @solution@ block, so 'levelFromFileSpec' fails) is left untouched.
+withAutoTyping :: A.Value -> Text -> A.Value
+withAutoTyping meta body =
+  case A.fromJSON (A.object [ "meta" A..= meta, "body" A..= body ]) of
+    A.Success (fs :: FileSpec) -> case levelFromFileSpec fs of
+      Right lvl -> insertKey "auto-requires-typing"
+                     (A.Bool (not (tapThroughReference lvl))) meta
+      Left _    -> meta
+    A.Error _ -> meta
+  where
+    insertKey k v (A.Object o) = A.Object (KM.insert k v o)
+    insertKey _ _ other        = other
 
 -- | Split a level file into its YAML front-matter and its Markdown body. A file
 -- opens with a @---@ line, then the front-matter, then a closing @---@ line; the

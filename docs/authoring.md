@@ -269,7 +269,7 @@ move, since a gated level whose solution trips its own gate cannot be solved.
 ## The Moves panel
 
 The Moves panel offers tap-to-fill steps for the focused hole: the introduction
-and elimination moves the goal admits, plus the granted inventory lemmas. Three
+and elimination moves the goal admits, plus the granted inventory lemmas. A few
 optional front-matter fields tune how much it gives away.
 
 - `moves` sets the panel's mode for the whole level.
@@ -282,11 +282,16 @@ optional front-matter fields tune how much it gives away.
   exactly one move applies, and leaves it `on` otherwise. Use it to stop the
   panel from simply handing over a forced step, while still helping where there
   is a genuine choice. It has no effect on an `obscure` or `off` level.
-- `requires-typing`, when `true`, adds a "⌨ typing" badge to the level's heading
-  and its tile, flagging that the level cannot be solved by taps alone. A level
-  with `moves: off` carries the badge automatically (there are no taps to solve
-  by), so the field is only needed for an `on`/`obscure` level whose reference
-  solution has a step no move produces.
+A "⌨ typing" badge on a level's heading and tile flags that it cannot be solved
+by taps alone. It is set automatically: at bundle time the engine replays the tap
+loop over the reference solution, and a level whose solution no sequence of moves
+reconstructs is marked as requiring typing (a `moves: off` level always is, since
+it offers no taps). The classification is baked into the bundle, so the browser
+never recomputes it.
+
+- `requires-typing` overrides that automatic decision when set: `true` forces the
+  badge on, `false` forces it off. Leave it unset to trust the classifier. It has
+  no effect on a `moves: off` level, which always requires typing.
 
 Two things are worth knowing. A player can hide the panel everywhere from the
 action bar; that global preference wins, so an `on` or `obscure` level shows

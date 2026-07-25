@@ -23,6 +23,7 @@ module RzkGame.Level
   , allowedActions
   , effectiveMovesMode
   , requiresTyping
+  , tapThroughReference
   , refineFirstHole
   , renderResult
   , resultErrorLines
@@ -48,6 +49,7 @@ import           Text.Read            (readMaybe)
 
 import           RzkGame.Highlight    (Tok (..), TokClass (Plain), highlight)
 import           RzkGame.Parse        (safeParseModule)
+import           RzkGame.Subsume      (subsumesSolution)
 
 import           Rzk.Diagnostic       (locationOfTypeError)
 import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
@@ -101,6 +103,7 @@ data Level = Level
   , levelMoves          :: Maybe MovesMode -- ^ author-side Moves-panel mode ('Nothing' ⇒ 'MovesOn')
   , levelAutohideSingle :: Maybe Bool  -- ^ obscure a hole with a single move ('Nothing' ⇒ off)
   , levelRequiresTyping :: Maybe Bool  -- ^ author override for the "requires typing" badge
+  , levelAutoRequiresTyping :: Bool -- ^ precomputed tap-through classification (bundle-time; see 'tapThroughReference')
   , levelConclusion :: Text   -- ^ prose shown on success
   } deriving (Eq, Show)
 
@@ -528,17 +531,43 @@ effectiveMovesMode showMoves lvl h
 -- solve by: it requires typing by construction, and that wins over any override.
 -- An @obscure@ level does not — the moves can still be revealed and tapped. For an
 -- @on@/@obscure@ level the author may pin the badge with 'levelRequiresTyping';
--- absent an override we fall back to an automatic classification.
---
--- The automatic side is a stub for now (always 'False'): the tap-through walk
--- over the reference solution lands in a follow-up. This function is the single
--- seam it plugs into, so wiring it up later needs no change here or in the UI.
+-- absent an override we use the classification precomputed at bundle time
+-- ('levelAutoRequiresTyping', the negation of 'tapThroughReference'). Keeping the
+-- classification in the bundle keeps this a field read at render time, so the
+-- browser never runs the tap-through walk.
 requiresTyping :: Level -> Bool
 requiresTyping lvl
   | levelMoves lvl == Just MovesOff = True
-  | otherwise                       = fromMaybe autoClassify (levelRequiresTyping lvl)
+  | otherwise = fromMaybe (levelAutoRequiresTyping lvl) (levelRequiresTyping lvl)
+
+-- | Can the reference solution be reached by taps alone? We replay the tap loop
+-- the player would: from the template, at each step take the first hole (the one
+-- the panel acts on — see 'refineFirstHole'), and try every offered move whose
+-- result still /subsumes/ the reference solution (a hole in the candidate being a
+-- wildcard, see 'RzkGame.Subsume.subsumesSolution'). The solution guides the walk,
+-- so it barely branches: at a well-formed hole at most one move keeps the
+-- candidate on the solution's shape. We still explore all of them ('any'), so a
+-- rare tie cannot strand a reachable solution. The walk succeeds when a candidate
+-- type-checks with no holes ('Solved'); it fails when, from the template, no
+-- sequence of matching moves reaches the solution — some step needs typing.
+--
+-- The step count is bounded as a safety net: each accepted move consumes one node
+-- of the finite solution, so the walk terminates well within the bound; the bound
+-- only guards against a pathological level whose moves never converge.
+tapThroughReference :: Level -> Bool
+tapThroughReference lvl = go (0 :: Int) (levelTemplate lvl)
   where
-    autoClassify = False  -- TODO(typing-badge): = not (tapThroughReference lvl)
+    solution = levelSolution lvl
+    go steps candidate
+      | steps > 300 = False
+      | otherwise   = case checkLevel lvl candidate of
+          Solved      -> True
+          Holes (h:_) ->
+            any (go (steps + 1))
+              [ c | (_, ins) <- allowedActions lvl h
+                  , let c = refineFirstHole ins candidate
+                  , subsumesSolution c solution ]
+          _           -> False
 
 -- | The head identifier of a move's filler term: its leading whitespace-delimited
 -- token (@first (?)@ → @first@, @recOR ( … )@ → @recOR@). Used to match a move

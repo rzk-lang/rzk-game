@@ -17,6 +17,7 @@
 -- its body).
 module RzkGame.Loader
   ( buildGame
+  , levelFromFileSpec
   ) where
 
 import           Data.Aeson      (eitherDecodeStrict')
@@ -24,6 +25,7 @@ import           Data.Bifunctor  (first)
 import           Data.ByteString (ByteString)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import           Data.Maybe      (fromMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
@@ -74,37 +76,46 @@ proseFrom files ref = do
 
 puzzleFrom :: Map Text FileSpec -> PuzzleRef -> Either Text PuzzleItem
 puzzleFrom files ref = do
-  f <- resolve files (puFile ref)
+  f   <- resolve files (puFile ref)
+  lvl <- levelFromFileSpec f
+  pure PuzzleItem
+    { puzzleLevel   = lvl
+    , puzzleId      = metaId (fileMeta f)
+    , puzzleRole    = parseRole (puRole ref)
+    , puzzlePrereqs = puPrereqs ref
+    , puzzleRemedy  = map remedyFrom (puRemedies ref)
+    }
+
+-- | Build the intrinsic 'Level' from an inlined puzzle file (its 'Meta' and
+-- body), independent of any table-of-contents placement. Shared by 'puzzleFrom'
+-- and the native bundler, which uses it to precompute 'levelAutoRequiresTyping'.
+-- Fails when the body has no @template@/@solution@ block (e.g. a prose file).
+levelFromFileSpec :: FileSpec -> Either Text Level
+levelFromFileSpec f = do
   let m    = fileMeta f
       body = fileBody f
   (prelude, template, solution) <- splitLevelSource body
   (goalName, goalType, goalUses) <- goalFromTemplate template
   let (intro, conclusion) = levelProse body
-      lvl = Level
-        { levelTitle      = metaTitle m
-        , levelIntro      = intro
-        , levelStatement  = metaStatement m
-        , levelPrelude    = prelude
-        , levelTemplate   = template
-        , levelSolution   = solution
-        , levelGoalName   = goalName
-        , levelGoalType   = goalType
-        , levelGoalUses   = goalUses
-        , levelInventory  = metaInventory m
-        , levelForbidden  = metaForbidden m
-        , levelHints      = metaHints m
-        , levelGated      = metaGated m
-        , levelMoves          = metaMoves m
-        , levelAutohideSingle = metaAutohideSingle m
-        , levelRequiresTyping = metaRequiresTyping m
-        , levelConclusion = conclusion
-        }
-  pure PuzzleItem
-    { puzzleLevel   = lvl
-    , puzzleId      = metaId m
-    , puzzleRole    = parseRole (puRole ref)
-    , puzzlePrereqs = puPrereqs ref
-    , puzzleRemedy  = map remedyFrom (puRemedies ref)
+  pure Level
+    { levelTitle      = metaTitle m
+    , levelIntro      = intro
+    , levelStatement  = metaStatement m
+    , levelPrelude    = prelude
+    , levelTemplate   = template
+    , levelSolution   = solution
+    , levelGoalName   = goalName
+    , levelGoalType   = goalType
+    , levelGoalUses   = goalUses
+    , levelInventory  = metaInventory m
+    , levelForbidden  = metaForbidden m
+    , levelHints      = metaHints m
+    , levelGated      = metaGated m
+    , levelMoves          = metaMoves m
+    , levelAutohideSingle = metaAutohideSingle m
+    , levelRequiresTyping = metaRequiresTyping m
+    , levelAutoRequiresTyping = fromMaybe False (metaAutoRequiresTyping m)
+    , levelConclusion = conclusion
     }
 
 -- | Look up an inlined level file by the path the table of contents refers to.
