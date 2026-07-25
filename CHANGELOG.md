@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - A "⌨ typing" badge marks a level that cannot be solved by taps alone. It is classified automatically at bundle time: the bundler replays the tap loop over the reference solution and flags a level no sequence of moves reconstructs (a `moves: off` level always qualifies). The classification uses rzk's free-foil core — a term subsumption that treats a candidate's holes as wildcards and matches everything else up to α-equivalence — and is baked into the bundle, so the browser never recomputes it. `requires-typing: true`/`false` overrides the decision per level.
 - A global "Show moves" toggle in the action bar hides the Moves panel across every level; the preference persists and overrides a level's own `moves` setting.
 
+### Changed
+
+- Re-pinned rzk to the [v0.11.1](https://github.com/rzk-lang/rzk/releases/tag/v0.11.1) release. It adds higher inductive types (a `#data` constructor may return an identity type to declare a path), `eliminate with` / `compute with` re-ascription clauses that let a `#data` re-spell a generated eliminator or computation rule with a definitionally equal type, and an explicit motive for modal `let mod`. The language is otherwise unchanged, so every level checks as before.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added
