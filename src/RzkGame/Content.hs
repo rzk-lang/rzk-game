@@ -410,6 +410,7 @@ idMorphismLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The constant path is the identity morphism. Both endpoints ask for $x$, so $x$ itself fills the hole — no need to move along the interval at all."
   }
@@ -447,6 +448,7 @@ constTriangleLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "Every boundary asked for $x$, so the constant function fills the whole triangle. In the next levels one edge becomes a genuine morphism, and the point has to vary along a coordinate."
   }
@@ -487,6 +489,7 @@ hom2Level = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The degenerate triangle is just $f$ ignoring the second coordinate. Reusing an existing edge, reparametrised, is the bread and butter of simplicial proofs."
   }
@@ -525,6 +528,7 @@ homLeftUnitLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The same edge $f$, reparametrised in the other coordinate. The right-unit triangle used the first coordinate; the left-unit one uses the second."
   }
@@ -561,6 +565,7 @@ mapPointLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "A function sends a point to a point, and the constant path at `g x` is its identity. The next level carries a whole morphism along, not just a point."
   }
@@ -599,6 +604,7 @@ apHomLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "Applying $g$ along the path $f$ gives a morphism between the images. This is functoriality: a function carries morphisms to morphisms, here `g (f t)` tracing $g$'s image of $f$."
   }
@@ -643,6 +649,7 @@ composeLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The composite $g \\circ f$ is the arrow at the centre of the contractible space of fillers. The Segal condition is exactly what makes this arrow exist and be well-defined. Next: recover the triangle that witnesses it."
   }
@@ -686,6 +693,7 @@ composeWitnessLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The composite and its witnessing triangle are the two halves of one \
       \centre of contraction. Together they say: in a Segal type, composition \
@@ -732,6 +740,7 @@ unfoldingSquareLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "A square is two copies of one triangle glued along the diagonal — the original on $s \\le t$ and its reflection on $t \\le s$. The two branches agree on the diagonal $s \\equiv t$, where both read $\\mathsf{triangle}\\,(t,t)$, so `recOR` is well-defined. We can now unfold any triangle into a square."
   }
@@ -792,6 +801,7 @@ witnessSquareLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The composition witness is now a square. Its left and right edges are $f$ and $g$; its other two edges are the composite. Seen sideways, this square is an arrow whose endpoints are $f$ and $g$. The arrow type makes that precise — and the next two levels put it to work."
   }
@@ -832,6 +842,7 @@ idArrLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The identity between arrows ignores the path coordinate $t$ and hands back the arrow $f$ unchanged. The two coordinates have clear roles: $t$ moves between arrows, $s$ runs along the arrow at hand. In the next level $t$ genuinely moves."
   }
@@ -884,6 +895,7 @@ arrInArrLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = True
   , levelConclusion =
       "Composition in $A$ is now an arrow in $\\mathsf{arr}\\,A$. Because the arrow type of a Segal type is again Segal, these arrows can themselves be composed — and that second-order composition is what makes associativity fall out."
   }
@@ -964,6 +976,7 @@ witnessAssocLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = True
   , levelConclusion =
       "A triangle of arrows: its two legs are the $(f,g)$ and $(g,h)$ composition arrows, and its hypotenuse is their composite in $\\mathsf{arr}\\,A$. Uncurried, this triangle of arrows is a prism $\\Delta^2\\times\\Delta^1 \\to A$ — and the tetrahedron is hiding inside it."
   }
@@ -1015,6 +1028,7 @@ tetrahedronLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The middle-simplex map carries $\\Delta^3$ into the prism, extracting a genuine tetrahedron. Its four faces are the three pairwise composites and the triple composite; reading off its edges gives the two bracketings of $h\\circ g\\circ f$."
   }
@@ -1066,6 +1080,7 @@ tripleCompLevel = Level
   , levelMoves          = Nothing
   , levelAutohideSingle = Nothing
   , levelRequiresTyping = Nothing
+  , levelAutoRequiresTyping = False
   , levelConclusion =
       "The triple composite is the tetrahedron's main diagonal. Its two faces exhibit it both as $(h\\circ g)\\circ f$ and as $h\\circ(g\\circ f)$; since a Segal type's composites are unique, the two bracketings agree. That is associativity — see the sHoTT chapter for the final equality."
   }

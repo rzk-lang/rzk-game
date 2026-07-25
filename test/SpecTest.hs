@@ -29,6 +29,7 @@ import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
 import           RzkGame.Save         (decodeArchive, encodeArchive)
 import           RzkGame.Format       (formatEditable, isWellFormatted)
+import           RzkGame.Subsume      (subsumesSolution)
 import           RzkGame.Spec         (Meta (..), goalFromTemplate, inventoryType,
                                       levelProse, splitLevelSource)
 import qualified Data.List            as List
@@ -68,6 +69,7 @@ main = do
         , levelInventory = [], levelForbidden = [], levelHints = []
         , levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelAutoRequiresTyping = False
         , levelConclusion = "" }
   check "checkLevel solves when the goal-check declares the assumption"
     (checkLevel (usesLevel ["A"]) (levelSolution (usesLevel ["A"])) == Solved)
@@ -434,6 +436,43 @@ main = do
        Success m -> metaMoves m == Just MovesOn
        Error _   -> False)
 
+  -- 10g. The subsumption oracle behind the typing badge: does a reference
+  --      solution fill the holes of a candidate, up to α-equivalence, with the
+  --      candidate's holes as wildcards? Bodies of two same-signature `#def`s.
+  putStrLn "== typing badge: subsumption oracle (holes as wildcards, up to α) =="
+  let subOf b1 b2 = subsumesSolution
+        ("#def f (A : U) (x y : A) : A := " <> b1)
+        ("#def f (A : U) (x y : A) : A := " <> b2)
+  check "a top-level hole subsumes anything"        (subOf "?" "x")
+  check "a hole under a binder subsumes a body"     (subOf "\\ t → ?" "\\ s → x")
+  check "a bound variable matches up to α-renaming"  (subOf "\\ t → t" "\\ s → s")
+  check "a bound variable does not match a free one" (not (subOf "\\ t → t" "\\ s → x"))
+  check "matching free (telescope) variables agree"  (subOf "x" "x")
+  check "distinct free variables do not subsume"     (not (subOf "x" "y"))
+  check "structure must match outside the holes"     (not (subOf "\\ t → ?" "x"))
+
+  -- 10h. The classifier algorithm ('tapThroughReference') over the built-ins: a
+  --      level whose reference solution is reachable by taps is tap-through; one
+  --      whose hand-written witness spine the moves cannot reproduce is not. This
+  --      runs the real walk (rzk type-checker + subsumption); at bundle time its
+  --      negation is stored in 'levelAutoRequiresTyping'.
+  putStrLn "== typing badge: tap-through classifier over built-ins =="
+  let byTitle t = head [ l | l <- gameLevels, levelTitle l == t ]
+  check "a tap-solvable level is tap-through (identity morphism)"
+    (tapThroughReference (byTitle "The identity morphism"))
+  check "a typing-only level is not tap-through (an arrow between arrows)"
+    (not (tapThroughReference (byTitle "An arrow between arrows")))
+  -- 'requiresTyping' reads the precomputed 'levelAutoRequiresTyping' (mirrored in
+  -- RzkGame.Content and pinned against the bundle below), with the author
+  -- override winning and a `moves: off` level always requiring typing.
+  check "requiresTyping reflects the precomputed classification"
+    (not (requiresTyping (byTitle "The identity morphism"))
+       && requiresTyping (byTitle "An arrow between arrows"))
+  check "an author override still wins over the classification"
+    (requiresTyping ((byTitle "The identity morphism") { levelRequiresTyping = Just True })
+       && not (requiresTyping ((byTitle "An arrow between arrows")
+                                { levelRequiresTyping = Just False })))
+
   -- 11. Error ordering: a wrong-typed editable region renders an error whose
   --     first non-empty line is the headline mismatch, not the global context
   --     dump. The engine formats TopDown, so the message leads (LSP-style).
@@ -470,6 +509,7 @@ main = do
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
         , levelHints = [], levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelAutoRequiresTyping = False
         , levelConclusion = "" }
   check "a multi-variable binder in a hole context no longer crashes (rzk#263)"
     (case checkLevel crashLevel (levelTemplate crashLevel) of
@@ -490,6 +530,7 @@ main = do
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
         , levelHints = [], levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelAutoRequiresTyping = False
         , levelConclusion = "" }
       badParen = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ z q → z = x)) ? ? ?"
   check "formatEditable no-ops on a layout-error fragment instead of crashing"
@@ -608,7 +649,8 @@ fileV (SPuzzle z) = object
         <> [ "gated" .= True | levelGated lvl ]
         <> [ "moves" .= movesWord mm | Just mm <- [levelMoves lvl] ]
         <> [ "autohide-single-move" .= b | Just b <- [levelAutohideSingle lvl] ]
-        <> [ "requires-typing" .= b | Just b <- [levelRequiresTyping lvl] ] )
+        <> [ "requires-typing" .= b | Just b <- [levelRequiresTyping lvl] ]
+        <> [ "auto-requires-typing" .= levelAutoRequiresTyping lvl ] )
   , "body" .= levelBody lvl
   ]
   where lvl = puzzleLevel z
