@@ -14,20 +14,24 @@ packages: .
 -- branches against the expected type (#247), which lets a bare hole sit inside
 -- a recOR branch (used by the unfolding-square level).
 --
--- Pinned to the v0.11.0 release, which adds inductive types: the `#data`
+-- Pinned to the v0.11.1 release. Over v0.11.0 (inductive types: the `#data`
 -- command declares a datatype with generated induction/recursion principles,
 -- and `match` expressions give pattern-matching notation, both computing
--- definitionally. In holes, offered moves are now guaranteed to mean what they
--- render (#317/#318) and no longer shadow enclosing binders or claim a hidden
--- scrutinee's name (#313/#315/#320/#324); a `U` goal offers the type formers
--- (#314). Breaking upstream: the syntax forms deprecated since v0.5.0 are
--- removed, and a binder repeated in one group is now an error (#321) — the
--- built-in game uses neither. Still builds under GHC 9.8+ (the wasm toolchain
--- provides 9.12).
+-- definitionally) it adds higher inductive types — a `#data` constructor may
+-- return an identity type to declare a path (#329) — and `eliminate with` /
+-- `compute with` re-ascription clauses that let a `#data` re-spell a generated
+-- eliminator or computation rule with a definitionally equal type (#328/#329);
+-- modal `let mod` gains an explicit motive (#327). In holes, offered moves are
+-- guaranteed to mean what they render (#317/#318) and no longer shadow enclosing
+-- binders or claim a hidden scrutinee's name (#313/#315/#320/#324); a `U` goal
+-- offers the type formers (#314). Breaking since v0.10: the syntax forms
+-- deprecated since v0.5.0 are removed, and a binder repeated in one group is an
+-- error (#321) — the built-in game uses neither. Still builds under GHC 9.8+
+-- (the wasm toolchain provides 9.12).
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: ec9004b6ccbccabf74eca5b0c6a38c6e89135eb3
+  tag: 9f8bb524255567ab4e91c8f8f0b9c1f0e07bffbf
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
