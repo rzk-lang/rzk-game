@@ -110,6 +110,7 @@ levelFromFileSpec f = do
     , levelInventory  = metaInventory m
     , levelForbidden  = metaForbidden m
     , levelHints      = metaHints m
+    , levelChecks     = metaChecks m ++ postchecksFromBody body
     , levelGated      = metaGated m
     , levelMoves          = metaMoves m
     , levelAutohideSingle = metaAutohideSingle m

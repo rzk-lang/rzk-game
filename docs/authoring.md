@@ -163,13 +163,15 @@ The front-matter holds the intrinsic metadata.
 - `forbidden` lists built-in eliminators the level bans, such as `idJ`, `first`,
   `second`, or `recOR`. See *Inventory and gating* below.
 - `hints` is an ordered list. See *Hints* below.
+- `checks` is an optional list of behaviour checks the finished solution must
+  satisfy on top of having the goal type. See *Behaviour checks* below.
 - `gated`, when `true`, makes an inventory or forbidden-move violation fail the
   check. It defaults to `false`.
 - `moves`, `autohide-single-move`, and `requires-typing` control the Moves panel
   and the "requires typing" badge. See *The Moves panel* below. All three are
   optional and default off.
 
-The body has three roles of fenced rzk block, with surrounding prose.
+The body has these roles of fenced rzk block, with surrounding prose.
 
 - A `rzk prelude` block holds the read-only, already-checked definitions the
   player builds on. Every `prelude` block is concatenated in order. Start it with
@@ -178,6 +180,8 @@ The body has three roles of fenced rzk block, with surrounding prose.
   the player works. There is exactly one.
 - A `rzk solution` block is a reference solution. There is exactly one. The suite
   checks that it solves, so it doubles as a test.
+- A `rzk postcheck` block holds behaviour checks (optional). See *Behaviour
+  checks* below.
 - The Markdown before the first rzk block is the intro prose. (A plain `rzk`
   display block, with no role word, stays part of the intro.) The Markdown under
   a trailing `## Conclusion` heading is shown on success.
@@ -265,6 +269,69 @@ prelude-defined names are kept, so local hypotheses and keywords are ignored. A
 level with an empty inventory gates nothing. Importantly, before turning `gated`
 on, check that the reference solution uses only granted names and no forbidden
 move, since a gated level whose solution trips its own gate cannot be solved.
+
+## Behaviour checks
+
+The win condition is that the player produces a definition of the goal name with
+the goal type, hole-free. A type does not always pin the answer: `not : Bool →
+Bool` is inhabited by the constant `\ _ → false`, and `plus`, `double-ℕ`, and
+similar are passed by wrong-but-well-typed terms. The `checks` list closes that
+gap. Each check is a proposition the finished solution must satisfy; the engine
+appends it as its own definition after the player's proof and requires it to
+type-check. A check only runs once the proof is otherwise complete, so it never
+interferes with the hole-by-hole flow.
+
+```yaml
+checks:
+- not true = false                    # bare string: proved by refl
+- prop: not (not true) = true         # object form: explicit proof + summary
+  by: refl
+  label: negation is involutive at true
+```
+
+A bare string is the proposition, proved by `refl`. Because `#data` computation
+is definitional, a `refl` check pins behaviour exactly: `not true = false` holds
+only when the player's `not` actually computes `true` to `false`, so the constant
+`\ _ → false` is rejected. The object form `{ prop, by }`, above, gives an
+explicit proof term and an optional `label` (see below). `by` defaults to `refl`;
+give a different term only when `refl` is not enough — for instance naming a lemma
+the prelude grants, `by: plus-comm 1 2`. The proof is checked with the player's
+definition and the prelude in scope. A front-matter check is a closed
+proposition; a check that quantifies over a variable (`(b : Bool) → …`) is better
+written as a block, below.
+
+The front-matter form is convenient for closed one-liners, but a check that must
+quantify over the level's parameters gets unwieldy: the parameters are the
+solution's telescope, not in scope at the top level, so the proposition has to
+re-declare the whole telescope (and the proof re-bind it). For those, write a
+`rzk postcheck` block in the body instead — a fenced code block like `prelude` /
+`template` / `solution`:
+
+````markdown
+```rzk postcheck
+-- label: contra-yon computes to the composite
+#def _contra-yon-computes
+  (A : U) (is-segal-A : is-segal A) (a b : A)
+  (v : hom A a b) (z : A) (f : hom A z a)
+  : contra-yon A is-segal-A a b v z f = comp-is-segal A is-segal-A z a b f v
+  := refl
+```
+````
+
+Each `#def` in the block is one check: its type is the proposition and its body
+the proof, so the telescope is written once, the natural way. A `-- label: …`
+comment on the line before a `#def` gives it the plain-English summary shown when
+it fails (otherwise the written proposition is used). The two forms are
+equivalent and may be combined; a block `#def` is checked independently, like a
+front-matter check, so a helper a check relies on belongs in the prelude, not the
+block.
+
+When a solution type-checks and is hole-free but a check fails, the engine
+reports it as a distinct "so close" result listing the checks that must hold,
+rather than a type error or a win. Each is shown by its `label` if given,
+otherwise by its proposition (for a block check, its written type, without the
+telescope prefix the check carries internally). Keep checks to the observable
+behaviour the type misses; they are not a place to re-prove the goal.
 
 ## The Moves panel
 

@@ -14,6 +14,7 @@ module RzkGame.Level
   ( Level (..)
   , InventoryEntry (..)
   , Hint (..)
+  , PostCheck (..)
   , MovesMode (..)
   , CheckResult (..)
   , HoleView (..)
@@ -27,6 +28,7 @@ module RzkGame.Level
   , refineFirstHole
   , renderResult
   , resultErrorLines
+  , humanize
   , hintMatchesGoal
   , visibleHints
   , plainHintCount
@@ -99,6 +101,7 @@ data Level = Level
   , levelInventory  :: [InventoryEntry] -- ^ granted lemmas (the "Allowed here" list)
   , levelForbidden  :: [Text] -- ^ eliminators denied here (dropped from the moves)
   , levelHints      :: [Hint] -- ^ authored hints, revealed on request
+  , levelChecks     :: [PostCheck] -- ^ behaviour checks appended after a complete solution
   , levelGated      :: Bool   -- ^ make an inventory or forbidden violation fail the check
   , levelMoves          :: Maybe MovesMode -- ^ author-side Moves-panel mode ('Nothing' ⇒ 'MovesOn')
   , levelAutohideSingle :: Maybe Bool  -- ^ obscure a hole with a single move ('Nothing' ⇒ off)
@@ -115,6 +118,19 @@ data Level = Level
 data Hint = Hint
   { hintText     :: Text
   , hintWhenGoal :: Maybe Text
+  } deriving (Eq, Show)
+
+-- | An author-designed behaviour check: a proposition the player's finished
+-- solution must satisfy, over and above having the goal type. The win-check
+-- appends @#def … : \<checkProp\> := \<checkBy\>@ after the solution and requires
+-- it to type-check; 'checkBy' defaults to @refl@, which — because @#data@
+-- computation is definitional — pins the solution's behaviour exactly (e.g.
+-- @not true = false@ rejects the constant @\\ _ → false@). This makes an
+-- under-determined puzzle, whose goal type alone does not fix the answer, honest.
+data PostCheck = PostCheck
+  { checkProp  :: Text        -- ^ the proposition to inhabit (the check's type, as used to build the check @#def@)
+  , checkBy    :: Maybe Text  -- ^ the proof term; 'Nothing' ⇒ @refl@
+  , checkLabel :: Text        -- ^ the human-readable text shown when the check fails (an author summary, or the written proposition — not the telescope-folded 'checkProp')
   } deriving (Eq, Show)
 
 -- | Whether a hint's @when-goal@ trigger fires for a rendered goal text. The
@@ -172,7 +188,8 @@ data CheckResult
   | ParseError Text (Maybe Int) -- ^ the source did not parse (+ editable line)
   | TypeError Text [Int]    -- ^ a genuine type error (+ editable lines to squiggle)
   | Holes [HoleView]        -- ^ unsolved holes, each with its goal + local context
-  | Solved                  -- ^ typechecks with no remaining holes
+  | Solved                  -- ^ typechecks with no remaining holes (and passes any behaviour checks)
+  | CheckFailed [Text]      -- ^ hole-free and well-typed, but a required behaviour check fails (the failed propositions)
   | CheckerCrashed Text     -- ^ rzk panicked/threw; caught so the app stays alive
   deriving (Eq, Show, Generic)
 
@@ -375,6 +392,17 @@ checkLevelPure lvl editable =
       -- they surface as tap-to-fill moves applied to holes (an empty inventory
       -- gives an empty allow-list, reproducing the plain hole query).
       lemmas = map (fromString . T.unpack) (levelInventoryNames lvl)
+      -- Behaviour checks (see 'PostCheck'), run only once the proof is complete:
+      -- append each as its own definition to the solved source and require it to
+      -- type-check hole-free. Each is independent, so a failure names exactly
+      -- that check. 'checkProp' is returned as the human label of a failure.
+      failedChecks =
+        [ checkLabel c | (i, c) <- zip [0 :: Int ..] (levelChecks lvl), not (passes i c) ]
+      passes i c = case safeParseModule (src <> checkDef i c) of
+        Right cm -> case typecheckModulesWithHolesAndLemmas lemmas [("level", cm)] of
+          Right (checked', holes') -> null (checkedErrors checked') && null holes'
+          Left _                   -> False
+        Left _   -> False
   in case safeParseModule src of
        Left err -> ParseError err (toEditableLine =<< parseErrorLine err)
        Right m  ->
@@ -389,9 +417,18 @@ checkLevelPure lvl editable =
            Right (checked, holes) -> case checkedErrors checked of
              err : _ -> TypeError (ppErr err) (errorLines err)
              []
-               | null holes -> Solved
-               | otherwise  -> Holes (map toHoleView holes)
+               | not (null holes) -> Holes (map toHoleView holes)
+               -- the proof is complete and well-typed; now the behaviour checks.
+               | otherwise -> case failedChecks of
+                   []     -> Solved
+                   failed -> CheckFailed failed
   where
+    -- One behaviour check as its own definition, appended after the solved source.
+    -- The proof term defaults to @refl@, which pins @#data@ behaviour definitionally.
+    checkDef :: Int -> PostCheck -> Text
+    checkDef i c = "\n#def __rzkgame_check_" <> tshow i <> " : " <> checkProp c
+                     <> "\n  := " <> fromMaybe "refl" (checkBy c)
+
     -- 'TopDown' leads with the headline mismatch ("cannot unify …") and then the
     -- "when typechecking" trace and the context, as an LSP diagnostic does.
     -- 'BottomUp' reverses each block, which buries the message under the context
@@ -600,6 +637,8 @@ renderResult = \case
   Holes hs        -> tshow (length hs) <> " hole(s):\n\n"
                        <> T.intercalate "\n" (map renderHoleView hs)
   Solved          -> "Solved: no holes, typechecks."
+  CheckFailed ps  -> "Type-checks, but a required check fails:\n"
+                       <> T.intercalate "\n" (map ("  " <>) ps)
   CheckerCrashed e -> "Checker crashed:\n" <> e
   where
     -- A " (at line N)" / " (at lines N, M)" suffix for the self-test/log output.
