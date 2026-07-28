@@ -35,6 +35,7 @@ module RzkGame.Spec
   , splitLevelSource
   , levelProse
   , goalFromTemplate
+  , postchecksFromBody
   , inventoryType
   ) where
 
@@ -43,6 +44,8 @@ import           Data.Aeson          (FromJSON (..), Value (Bool, String),
                                       withObject, (.!=), (.:), (.:?))
 import           Data.Aeson.Types    (Parser)
 import           Data.Map.Strict     (Map)
+import qualified Data.Map.Strict     as Map
+import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 
@@ -51,7 +54,7 @@ import           RzkGame.Parse           (safeParseModule)
 import           Language.Rzk.Syntax.Abs
 
 import           RzkGame.Level       (Hint (..), InventoryEntry (..),
-                                      MovesMode (..))
+                                      MovesMode (..), PostCheck (..), humanize)
 
 -- | The single JSON bundle the wasm app fetches: the @game.yaml@ as JSON under
 -- @config@, and every referenced level file inlined under @files@, keyed by the
@@ -186,6 +189,7 @@ data Meta = Meta
   , metaInventory :: [InventoryEntry]
   , metaForbidden :: [Text]
   , metaHints     :: [Hint]
+  , metaChecks    :: [PostCheck] -- ^ @checks:@ — author-designed behaviour checks
   , metaGated     :: Bool
   , metaMoves         :: Maybe MovesMode -- ^ @moves:@ — the Moves-panel mode
   , metaAutohideSingle :: Maybe Bool     -- ^ @autohide-single-move:@
@@ -194,7 +198,7 @@ data Meta = Meta
   } deriving (Eq, Show)
 
 emptyMeta :: Meta
-emptyMeta = Meta "" "" Nothing "" [] [] [] False Nothing Nothing Nothing Nothing
+emptyMeta = Meta "" "" Nothing "" [] [] [] [] False Nothing Nothing Nothing Nothing
 
 
 instance FromJSON Meta where
@@ -206,6 +210,7 @@ instance FromJSON Meta where
     <*> (o .:? "inventory" .!= [] >>= traverse parseInventoryEntry)
     <*> o .:? "forbidden" .!= []
     <*> (o .:? "hints" .!= [] >>= traverse parseHint)
+    <*> (o .:? "checks" .!= [] >>= traverse parsePostCheck)
     <*> o .:? "gated" .!= False
     <*> (o .:? "moves" >>= traverse parseMovesMode)
     <*> o .:? "autohide-single-move"
@@ -245,6 +250,72 @@ parseHint :: Value -> Parser Hint
 parseHint = withObject "Hint" $ \o -> Hint
   <$> o .:? "text" .!= ""
   <*> o .:? "when-goal"
+
+-- | Read one behaviour check. A bare string is the proposition, proved by @refl@;
+-- an object @{ prop, by?, label? }@ gives an explicit proof term and/or a human
+-- summary shown when the check fails (defaulting to the proposition). 'PostCheck'
+-- lives in 'RzkGame.Level', so it is decoded here without an orphan instance.
+parsePostCheck :: Value -> Parser PostCheck
+parsePostCheck (String s) = pure (PostCheck s Nothing s)
+parsePostCheck v = flip (withObject "PostCheck") v $ \o -> do
+  prop  <- o .:  "prop"
+  by    <- o .:? "by"
+  label <- o .:? "label"
+  pure (PostCheck prop by (fromMaybe prop label))
+
+-- | The behaviour checks written as a @rzk postcheck@ block, desugared to
+-- 'PostCheck's. Each @#def@ in the block becomes one check: its closed type is
+-- the proposition, and its parameters and body are re-wrapped into a matching
+-- λ-proof (a parameter-free @#def@ keeps its body as-is). So an author writes a
+-- check the natural way, with the level's telescope in scope,
+--
+-- > #def _check (A : U) (a b : A) (f : hom A a b) : g a b f = h a b f := refl
+--
+-- and it checks exactly as the front-matter form would, but without spelling the
+-- telescope twice on one line. Each @#def@ is checked independently (see
+-- 'RzkGame.Level.checkLevel'), so a helper a check depends on belongs in the
+-- prelude, not the block. A block that does not parse contributes no checks.
+postchecksFromBody :: Text -> [PostCheck]
+postchecksFromBody body
+  | T.null (T.strip src) = []
+  | otherwise = case safeParseModule ("#lang rzk-1\n" <> src) of
+      Right (Module _ _ cmds) ->
+        [ PostCheck (closedType c) (Just (proofOf ann ps b)) (label nm ty)
+        | c@(CommandDefine ann nm _ ps ty b) <- cmds ]
+      _ -> []
+  where
+    src = postcheckSource body
+    proofOf _   [] b = T.pack (printTree b)
+    proofOf ann ps b = T.pack (printTree (Lambda ann ps b))
+    -- The display label: an author @-- label:@ comment on the @#def@, else its
+    -- written result type (not the telescope-folded 'checkProp'), humanised.
+    label nm ty = humanize (Map.findWithDefault (T.pack (printTree ty)) (varText nm) labels)
+    labels = labelMap (T.lines src)
+
+-- | Map each @#def@ name in a postcheck block to a preceding @-- label: …@
+-- comment, if any. A label line attaches to the next @#def@.
+labelMap :: [Text] -> Map Text Text
+labelMap = go Nothing
+  where
+    go _ [] = Map.empty
+    go pend (l : ls)
+      | Just lbl <- pendingLabel l = go (Just lbl) ls
+      | Just nm  <- defName l      = maybe id (Map.insert nm) pend (go Nothing ls)
+      | otherwise                  = go pend ls
+    pendingLabel l =
+      let s = T.strip l
+      in if "-- label:" `T.isPrefixOf` s then Just (T.strip (T.drop 9 s)) else Nothing
+    defName l = case T.words (T.strip l) of
+      ("#def" : nm : _) -> Just nm
+      _                 -> Nothing
+
+-- | The concatenated source of every @rzk postcheck@ block in a level body, in
+-- order (empty when there is none). Parses the fenced blocks the same way
+-- 'splitLevelSource' does.
+postcheckSource :: Text -> Text
+postcheckSource body = case parseBlocks (T.lines body) of
+  Right blocks -> T.concat [ T.unlines b | ("postcheck", b) <- blocks ]
+  Left _       -> ""
 
 -- | Split a level body into its @(prelude, template, solution)@ rzk code, by the
 -- role word on each fenced block (decision D2). A block opens with a fence whose
@@ -315,7 +386,7 @@ fenceRole :: Text -> Maybe (Maybe Text)
 fenceRole line
   | "```" `T.isPrefixOf` s =
       case T.words (T.drop 3 s) of
-        ("rzk" : r : _) | r `elem` ["prelude", "template", "solution"] -> Just (Just r)
+        ("rzk" : r : _) | r `elem` ["prelude", "template", "solution", "postcheck"] -> Just (Just r)
         _                                                              -> Just Nothing
   | otherwise = Nothing
   where s = T.stripStart line

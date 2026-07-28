@@ -31,7 +31,7 @@ import           RzkGame.Save         (decodeArchive, encodeArchive)
 import           RzkGame.Format       (formatEditable, isWellFormatted)
 import           RzkGame.Subsume      (subsumesSolution)
 import           RzkGame.Spec         (Meta (..), goalFromTemplate, inventoryType,
-                                      levelProse, splitLevelSource)
+                                      levelProse, postchecksFromBody, splitLevelSource)
 import qualified Data.List            as List
 
 main :: IO ()
@@ -67,7 +67,7 @@ main = do
         , levelSolution = "#def goal uses (A) : U\n  := A"
         , levelGoalName = "goal", levelGoalType = "U", levelGoalUses = us
         , levelInventory = [], levelForbidden = [], levelHints = []
-        , levelGated = False, levelMoves = Nothing
+        , levelChecks = [], levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
         , levelAutoRequiresTyping = False
         , levelConclusion = "" }
@@ -473,6 +473,91 @@ main = do
        && not (requiresTyping ((byTitle "An arrow between arrows")
                                 { levelRequiresTyping = Just False })))
 
+  -- 10i. Behaviour checks (postcheck): a `#data Bool` negation whose goal type
+  --      `Bool → Bool` does not pin the answer. The constant `\ _ → false` has
+  --      that type and no holes, so it is Solved without checks — but two `refl`
+  --      checks (`not true = false`, `not false = true`) reject it, since #data
+  --      computation is definitional. The correct negation passes.
+  putStrLn "== behaviour checks: a required check rejects a trivial solution =="
+  let boolLvl checks body = Level
+        { levelTitle = "neg", levelIntro = "", levelStatement = "Bool → Bool"
+        , levelPrelude = "#lang rzk-1\n#data Bool := false | true\n"
+        , levelTemplate = "#def neg\n  : Bool → Bool\n  := ?\n"
+        , levelSolution = "#def neg\n  : Bool → Bool\n  := " <> body <> "\n"
+        , levelGoalName = "neg", levelGoalType = "Bool → Bool", levelGoalUses = []
+        , levelInventory = [], levelForbidden = [], levelHints = []
+        , levelChecks = checks, levelGated = False, levelMoves = Nothing
+        , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
+        , levelAutoRequiresTyping = False, levelConclusion = "" }
+      negChecks = [ PostCheck "neg true = false" Nothing "neg true = false"
+                  , PostCheck "neg false = true" Nothing "neg false = true" ]
+      correct   = "\\ b → match b ( false ⇒ true | true ⇒ false)"
+      trivial   = "\\ _ → false"
+      editableOf body = "#def neg\n  : Bool → Bool\n  := " <> body <> "\n"
+  check "the correct negation solves (checks pass)"
+    (checkLevel (boolLvl negChecks correct) (editableOf correct) == Solved)
+  check "the trivial constant is Solved when there are no checks"
+    (checkLevel (boolLvl [] trivial) (editableOf trivial) == Solved)
+  check "a required behaviour check rejects the trivial constant"
+    (case checkLevel (boolLvl negChecks trivial) (editableOf trivial) of
+       CheckFailed failed -> "neg false = true" `elem` failed
+       _                  -> False)
+  check "a still-incomplete proof is Holes, not CheckFailed"
+    (case checkLevel (boolLvl negChecks trivial) (levelTemplate (boolLvl negChecks trivial)) of
+       Holes _ -> True
+       _       -> False)
+  -- The `checks:` reader: a bare string is a refl check; an object gives a proof.
+  let checksOf v = case fromJSON v :: Result Meta of
+        Success m -> Just (metaChecks m)
+        Error _   -> Nothing
+  check "checks: a bare string parses as a refl check (label = prop)"
+    (checksOf (object ["checks" .= ["neg true = false" :: Text]])
+       == Just [PostCheck "neg true = false" Nothing "neg true = false"])
+  check "checks: an object gives an explicit proof term (label defaults to prop)"
+    (checksOf (object ["checks" .= [object ["prop" .= ("p = q" :: Text), "by" .= ("refl" :: Text)]]])
+       == Just [PostCheck "p = q" (Just "refl") "p = q"])
+  check "checks: an object label overrides the failure summary"
+    (checksOf (object ["checks" .= [object ["prop" .= ("p = q" :: Text), "label" .= ("p equals q" :: Text)]]])
+       == Just [PostCheck "p = q" Nothing "p equals q"])
+
+  -- 10j. The `rzk postcheck` block: each `#def` desugars to a PostCheck — its
+  --      closed type is the proposition and its params/body become a matching
+  --      λ-proof — so an author writes a parametrised check the natural way with
+  --      the telescope in scope, and it checks exactly like the front-matter form.
+  putStrLn "== behaviour checks: a `rzk postcheck` block desugars to checks =="
+  let pcBody = T.unlines
+        [ "```rzk postcheck"
+        , "#def _c0 : neg true = false := refl"
+        , "#def _c1 : neg false = true := refl"
+        , "```" ]
+      blockChecks = postchecksFromBody pcBody
+  check "a postcheck block yields one check per #def"
+    (length blockChecks == 2 && checkProp (head blockChecks) == "neg true = false")
+  check "a param-free block check keeps its body as the proof, label = its type"
+    (head blockChecks == PostCheck "neg true = false" (Just "refl") "neg true = false")
+  check "a parametrised block check folds the type but labels with the written one"
+    (case postchecksFromBody (T.unlines
+           [ "```rzk postcheck"
+           , "#def _c (x : Bool) : neg x = neg x := refl"
+           , "```" ]) of
+       [PostCheck prop by lbl] -> "(x : Bool)" `T.isInfixOf` prop  -- folded telescope
+                                    && maybe False ("\\ " `T.isPrefixOf`) by
+                                    && lbl == "neg x = neg x"       -- readable, no telescope
+       _                       -> False)
+  check "a `-- label:` comment on a block #def becomes its failure summary"
+    (case postchecksFromBody (T.unlines
+           [ "```rzk postcheck"
+           , "-- label: negation is involutive at true"
+           , "#def _c : neg (neg true) = true := refl"
+           , "```" ]) of
+       [PostCheck _ _ lbl] -> lbl == "negation is involutive at true"
+       _                   -> False)
+  check "block checks reject the trivial constant but accept the correct negation"
+    (checkLevel (boolLvl blockChecks trivial) (editableOf trivial) /= Solved
+       && checkLevel (boolLvl blockChecks correct) (editableOf correct) == Solved)
+  check "a body with no postcheck block yields no checks"
+    (null (postchecksFromBody "just prose, no fenced block\n"))
+
   -- 11. Error ordering: a wrong-typed editable region renders an error whose
   --     first non-empty line is the headline mismatch, not the global context
   --     dump. The engine formats TopDown, so the message leads (LSP-style).
@@ -507,7 +592,7 @@ main = do
         , levelSolution = "#def foo (k : (x y : A) → A) : A\n  := ?"
         , levelGoalName = "foo", levelGoalType = "(k : (x y : A) → A) → A"
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
-        , levelHints = [], levelGated = False, levelMoves = Nothing
+        , levelHints = [], levelChecks = [], levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
         , levelAutoRequiresTyping = False
         , levelConclusion = "" }
@@ -528,7 +613,7 @@ main = do
         , levelSolution = "#def rev (A : U) (x y : A) (p : x = y)\n  : y = x\n  := ind-path A x (\\ y' p' → y' = x) refl y p"
         , levelGoalName = "rev", levelGoalType = "(A : U) → (x y : A) → (p : x = y) → y = x"
         , levelGoalUses = [], levelInventory = [], levelForbidden = []
-        , levelHints = [], levelGated = False, levelMoves = Nothing
+        , levelHints = [], levelChecks = [], levelGated = False, levelMoves = Nothing
         , levelAutohideSingle = Nothing, levelRequiresTyping = Nothing
         , levelAutoRequiresTyping = False
         , levelConclusion = "" }
@@ -646,6 +731,7 @@ fileV (SPuzzle z) = object
         , "inventory" .= map entryV (levelInventory lvl) ]
         <> [ "forbidden" .= levelForbidden lvl | not (null (levelForbidden lvl)) ]
         <> [ "hints" .= map hintV (levelHints lvl) | not (null (levelHints lvl)) ]
+        <> [ "checks" .= map checkV (levelChecks lvl) | not (null (levelChecks lvl)) ]
         <> [ "gated" .= True | levelGated lvl ]
         <> [ "moves" .= movesWord mm | Just mm <- [levelMoves lvl] ]
         <> [ "autohide-single-move" .= b | Just b <- [levelAutohideSingle lvl] ]
@@ -658,6 +744,11 @@ fileV (SPuzzle z) = object
 -- | A front-matter hint as JSON: @text@ and an optional @when-goal@.
 hintV :: Hint -> Value
 hintV (Hint t mg) = object (("text" .= t) : [ "when-goal" .= g | Just g <- [mg] ])
+
+-- | A behaviour check as JSON: always the object form @{ prop, by? }@.
+checkV :: PostCheck -> Value
+checkV (PostCheck p mby lbl) = object
+  (("prop" .= p) : [ "by" .= b | Just b <- [mby] ] <> [ "label" .= lbl | lbl /= p ])
 
 -- | An inventory entry as JSON: the @{ name, type?, synopsis? }@ object form
 -- 'RzkGame.Spec.parseInventoryEntry' reads back, so the bundle round-trips.

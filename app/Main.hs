@@ -1898,6 +1898,14 @@ resultView lvl editable = \case
   Solved       ->
     H.div_ [ P.class_ "ok" ]
       [ H.pre_ [] [ text "✓ Solved — no holes, typechecks. Level complete!" ] ]
+  -- Type-correct and hole-free, but the level's behaviour check(s) reject it —
+  -- the goal type did not pin the answer. Amber "so close", not a red error, and
+  -- list the propositions that must hold, syntax-highlighted like the goal.
+  CheckFailed ps ->
+    H.div_ [ P.class_ "checkfail" ]
+      [ H.p_ [] [ text (ms (checkFailHeading (length ps) (length (levelChecks lvl)))) ]
+      , H.ul_ [] [ H.li_ [] [ H.code_ [ P.class_ "rzk" ] (rzkSpans p) ] | p <- ps ]
+      ]
   Holes hs ->
     H.div_ [ P.class_ "holes" ]
       ( H.p_ [] [ text (ms (tshow (length hs) <> " hole(s) remaining")) ]
@@ -1918,6 +1926,22 @@ resultView lvl editable = \case
           ]
       , H.pre_ [ P.class_ "errdump" ] [ text (ms e) ]
       ]
+
+-- | Render a snippet of rzk as syntax-highlighted spans, with the editor's
+-- tokeniser (used for the failed-check propositions).
+rzkSpans :: T.Text -> [View Model Action]
+rzkSpans t =
+  [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+  | Tok cls txt <- highlight t ]
+
+-- | The heading over a failed behaviour-check list: a single check reads plainly,
+-- several report how many of the total failed.
+checkFailHeading :: Int -> Int -> T.Text
+checkFailHeading _ m
+  | m <= 1    = "So close — this typechecks, but it must also satisfy:"
+checkFailHeading n m =
+  "So close — this typechecks, but it fails " <> tshow n <> " of " <> tshow m
+    <> " behaviour checks:"
 
 -- | The level conclusion prose. The div is keyed by slot, so it is recreated on
 -- navigation (and the prose re-injected); it is revealed once the level solves.
