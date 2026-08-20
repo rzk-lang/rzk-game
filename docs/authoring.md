@@ -51,14 +51,23 @@ against.
 
 ## The Table of Contents
 
-The table of contents is `game.yaml`. It holds a title (shown as the heading at
-the top of the page, so a game reads under its own name) and an ordered list of
-`chapters`. A chapter has an optional `title` and an ordered list of `sections`.
-An untitled chapter renders its sections at the top level, so a flat game is just
-one untitled chapter. A section has an `id`, a `title`, and ordered `items`. Each
-item references a file by path, tagged `prose:` or `puzzle:`.
+The table of contents is `game.yaml`. It holds an `id`, a title (shown as the
+heading at the top of the page, so a game reads under its own name) and an
+ordered list of `chapters`. A chapter has an optional `title` and an ordered list
+of `sections`. An untitled chapter renders its sections at the top level, so a
+flat game is just one untitled chapter. A section has an `id`, a `title`, and
+ordered `items`. Each item references a file by path, tagged `prose:` or
+`puzzle:`.
+
+Set the game's `id`. It namespaces the player's saved progress. Games published
+to GitHub Pages share one origin and differ only by path, while `localStorage` is
+per-origin, so without distinct ids two games share one set of keys and overwrite
+each other's progress. A game that sets no `id` falls back to a slug of its
+title. That works until the title changes, at which point the namespace moves
+with it and the saved progress is orphaned.
 
 ```yaml
+id: my-game        # namespaces saved progress, keep it stable
 title: My game
 chapters:
 - sections:

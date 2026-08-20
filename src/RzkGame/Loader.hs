@@ -41,13 +41,14 @@ import           RzkGame.Spec
 -- metadata and prose, split the puzzle body into prelude/template/solution,
 -- recover the goal from the template, and add the placement metadata. The
 -- config's title is returned alongside the chapters so the UI can show the
--- game's own name (e.g. in the header) rather than a hard-coded one.
-buildGame :: ByteString -> Either Text (Text, [Chapter])
+-- game's own name (e.g. in the header) rather than a hard-coded one, and its id
+-- ('gameIdOf') so the app can namespace the player's saved progress to this game.
+buildGame :: ByteString -> Either Text (Text, Text, [Chapter])
 buildGame bs = do
   bundle <- first (("game.json: " <>) . T.pack) (eitherDecodeStrict' bs)
   let cfg = bundleConfig bundle
   chapters <- traverse (chapterFrom (bundleFiles bundle)) (gsChapters cfg)
-  pure (gsTitle cfg, chapters)
+  pure (gameIdOf cfg, gsTitle cfg, chapters)
 
 chapterFrom :: Map Text FileSpec -> ChapterSpec -> Either Text Chapter
 chapterFrom files c =

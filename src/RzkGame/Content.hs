@@ -7,7 +7,8 @@
 -- 'gameLevels' is derived from them, in the same global order as before, so the
 -- index-keyed progress and drafts stay compatible.
 module RzkGame.Content
-  ( gameTitle
+  ( gameId
+  , gameTitle
   , gameLevels
   , gameChapters
   , gameSections
@@ -35,6 +36,12 @@ import qualified Data.Text     as T
 import           RzkGame.Format (formatFixpoint)
 import           RzkGame.Level
 import           RzkGame.Section
+
+-- | The built-in game's id, which namespaces the player's saved progress. A
+-- loaded game supplies its own (from @game.yaml@'s @id:@, or a slug of its
+-- title), so two games served from one origin keep their progress apart.
+gameId :: Text
+gameId = "rzk-game"
 
 -- | The game's title, shown in the header. Mirrors @game/game.yaml@'s @title:@
 -- (the built-in game and the authored @game/@ must agree; the spec suite pins

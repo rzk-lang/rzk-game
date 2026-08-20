@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Two games served from one origin no longer overwrite each other's progress. GitHub Pages serves `rzk-lang.github.io/warmup-game/` and `/yoneda-game/` from a single origin, differing only by path, while `localStorage` is per-origin — so both games shared one set of keys, and playing either silently discarded the other's solved set, drafts, and viewed prose. Progress keys are now namespaced by a game id, taken from a new optional `id:` in `game.yaml` or, failing that, a slug of the title. Progress saved under the old keys is adopted once, so nothing is lost on upgrade; player *preferences* stay shared, being about the player rather than the game.
+
 ## [0.6.0] - 2026-08-20
 
 ### Added
