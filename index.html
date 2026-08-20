@@ -304,6 +304,14 @@
     .ctx .name { color: #225; }
     .ctx .type { color: #555; }
     .muted { color: #888; font-style: italic; }
+    /* The game's own content links. Kept quiet and away from the crash panel,
+       which reports engine bugs to a different place entirely. */
+    .game-footer { margin: 2.5rem 0 1rem; padding-top: .8rem;
+                   border-top: 1px solid #eee; font-size: .85rem; color: #888; }
+    .game-footer a { color: #666; }
+    .edit-link { margin: .2rem 0 .6rem; font-size: .8rem; }
+    .edit-link a { color: #999; text-decoration: none; }
+    .edit-link a:hover { color: #555; text-decoration: underline; }
     /* A thin, sticky bar that keeps level content in focus. It carries a toggle
        for the full map, the current section, and overall progress. */
     .mapbar-wrap { position: sticky; top: 0; z-index: 5; margin: 0 0 .6rem;
