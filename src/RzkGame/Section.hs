@@ -29,6 +29,10 @@ module RzkGame.Section
   , PretestAnswer (..)
     -- * Flattened navigation
   , Slot (..)
+  , GameInfo (..)
+  , gameInfo
+  , sourceOf
+  , editLinkFor
   , slotsOfSections
   , slotSectionId
   , puzzleSlots
@@ -55,6 +59,7 @@ import qualified Data.Map.Strict  as Map
 import           Data.Set         (Set)
 import qualified Data.Set         as Set
 import           Data.Text        (Text)
+import qualified Data.Text        as T
 
 import           RzkGame.Level    (Level)
 
@@ -119,6 +124,44 @@ data Section = Section
   , sectionTitle :: Text
   , sectionItems :: [SectionItem]
   } deriving (Eq, Show)
+
+-- | What a game says about itself, beyond its contents.
+--
+-- Everything but the id and the title is optional, and 'Nothing' means the
+-- engine keeps its own wording. A game supplies these through @game.yaml@; the
+-- built-in one leaves them unset.
+data GameInfo = GameInfo
+  { gameInfoId         :: Text        -- ^ namespaces saved progress
+  , gameInfoTitle      :: Text        -- ^ the heading
+  , gameInfoSubtitle   :: Maybe Text  -- ^ the line under it
+  , gameInfoCompletion :: Maybe Text  -- ^ shown when everything is done
+  , gameInfoRepository :: Maybe Text  -- ^ where the content lives
+  , gameInfoEditUrl    :: Maybe Text  -- ^ template with @{file}@, for per-item links
+  , gameInfoSources    :: Map Text Text
+    -- ^ item id to source path, so an item can link to its own file. Kept beside
+    -- the items rather than on them: the built-in game is Haskell values with no
+    -- source file, and the spec suite pins that a bundled game reproduces it
+    -- exactly, which a path field would break.
+  } deriving (Eq, Show)
+
+-- | A game with only the two facts every game has. The loader fills in the rest.
+gameInfo :: Text -> Text -> GameInfo
+gameInfo gid title = GameInfo gid title Nothing Nothing Nothing Nothing Map.empty
+
+-- | The source path an item was loaded from, if the game came from a bundle.
+sourceOf :: GameInfo -> Text -> Maybe Text
+sourceOf info itemId = Map.lookup itemId (gameInfoSources info)
+
+-- | The link to edit one item's source, when the game supplies an @edit-url@
+-- template and the item has a known source path. The template carries @{file}@
+-- rather than the engine guessing a host's edit path, which differs across
+-- GitHub, GitLab and the rest.
+editLinkFor :: GameInfo -> Text -> Maybe Text
+editLinkFor info itemId = do
+  tmpl <- gameInfoEditUrl info
+  file <- sourceOf info itemId
+  let url = T.replace "{file}" file tmpl
+  if url == tmpl then Nothing else Just url
 
 -- | A chapter: the top grouping in the picker, an (optionally titled) run of
 -- sections. A chapter with no title renders its sections without a heading, so a

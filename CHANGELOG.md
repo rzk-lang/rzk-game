@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Four optional `game.yaml` fields, each replacing something the engine would otherwise say for itself: `subtitle` (the line under the title), `completion` (what a player reads once everything is done, as Markdown, so a game can point at what comes next), `repository` (where the content lives, shown in a footer), and `edit-url` (a template containing `{file}`, which gives every page a link to its own source). `repository` and `edit-url` are for content only. A checker crash stays reported to the engine's own tracker, which is not the author's to receive.
+
 ### Fixed
+
+- Every game named its browser tab "Rzk Game". `index.html` is engine-shipped and copied verbatim into each game's build, so its `<title>` was the same everywhere, and deployed games were indistinguishable in a tab, a bookmark or the history. The app now names the tab after the game it loaded.
 
 - The controls no longer cover the level map. The Check / Format / Undo / Reset bar is sticky at the foot of the viewport, and the map is rendered above the level section, so scrolling through an open map put the bar over the map's own controls: the level tiles, and the export / import / reset row at its foot. The bar now returns to the flow while the map is open.
 

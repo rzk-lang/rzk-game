@@ -43,12 +43,29 @@ import           RzkGame.Spec
 -- config's title is returned alongside the chapters so the UI can show the
 -- game's own name (e.g. in the header) rather than a hard-coded one, and its id
 -- ('gameIdOf') so the app can namespace the player's saved progress to this game.
-buildGame :: ByteString -> Either Text (Text, Text, [Chapter])
+buildGame :: ByteString -> Either Text (GameInfo, [Chapter])
 buildGame bs = do
   bundle <- first (("game.json: " <>) . T.pack) (eitherDecodeStrict' bs)
-  let cfg = bundleConfig bundle
-  chapters <- traverse (chapterFrom (bundleFiles bundle)) (gsChapters cfg)
-  pure (gameIdOf cfg, gsTitle cfg, chapters)
+  let cfg   = bundleConfig bundle
+      files = bundleFiles bundle
+  chapters <- traverse (chapterFrom files) (gsChapters cfg)
+  pure ( GameInfo
+           { gameInfoId         = gameIdOf cfg
+           , gameInfoTitle      = gsTitle cfg
+           , gameInfoSubtitle   = gsSubtitle cfg
+           , gameInfoCompletion = gsCompletion cfg
+           , gameInfoRepository = gsRepository cfg
+           , gameInfoEditUrl    = gsEditUrl cfg
+           , gameInfoSources    = sourceMap files
+           }
+       , chapters )
+
+-- | Item id to the path it was loaded from. The bundle's file map is keyed by
+-- path already, so this is that map read the other way round, dropping any file
+-- whose front-matter declares no id.
+sourceMap :: Map Text FileSpec -> Map Text Text
+sourceMap files =
+  Map.fromList [ (metaId (fileMeta f), path) | (path, f) <- Map.toList files ]
 
 chapterFrom :: Map Text FileSpec -> ChapterSpec -> Either Text Chapter
 chapterFrom files c =

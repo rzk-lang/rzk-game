@@ -75,18 +75,36 @@ instance FromJSON Bundle where
 
 -- | The table of contents (the @game.yaml@): a title and the ordered chapters.
 data GameSpec = GameSpec
-  { gsId       :: Maybe Text
+  { gsId         :: Maybe Text
     -- ^ the game's stable identity, used to namespace saved progress
     -- ('RzkGame.Spec.gameIdOf'). Optional: a game that does not set one is
     -- identified by a slug of its title instead.
-  , gsTitle    :: Text
-  , gsChapters :: [ChapterSpec]
+  , gsTitle      :: Text
+  , gsSubtitle   :: Maybe Text
+    -- ^ the line under the title. 'Nothing' keeps the engine's own.
+  , gsCompletion :: Maybe Text
+    -- ^ shown when every required activity is done. Markdown, so a game can
+    -- point at whatever comes next. 'Nothing' keeps the engine's own.
+  , gsRepository :: Maybe Text
+    -- ^ where the game's content lives, for a reader with a fix to suggest.
+    -- Unrelated to where an engine bug is reported, which is not the author's
+    -- to receive.
+  , gsEditUrl    :: Maybe Text
+    -- ^ a template for editing one level file, containing @{file}@, e.g.
+    -- @https://github.com/me/game/edit/main/game/{file}@. Set it and every item
+    -- offers a link to its own source. A template rather than a host guess,
+    -- because the edit path differs across GitHub, GitLab and the rest.
+  , gsChapters   :: [ChapterSpec]
   } deriving (Eq, Show)
 
 instance FromJSON GameSpec where
   parseJSON = withObject "GameSpec" $ \o -> GameSpec
     <$> o .:? "id"
     <*> o .:? "title" .!= ""
+    <*> o .:? "subtitle"
+    <*> o .:? "completion"
+    <*> o .:? "repository"
+    <*> o .:? "edit-url"
     <*> o .:? "chapters" .!= []
 
 -- | A chapter: an optional title grouping a run of sections. The top level of a

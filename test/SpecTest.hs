@@ -101,19 +101,23 @@ main = do
   putStrLn "== buildGame: the whole game round-trips through a JSON bundle =="
   case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameChapters))) of
     Left err          -> check ("buildGame error: " <> T.unpack err) False
-    Right (gid, title, chs) -> do
+    Right (info, chs) -> do
       check "round-trips to all chapters" (length chs == length gameChapters)
       check "chapters equal RzkGame.Content" (chs == gameChapters)
-      check "title round-trips from the config" (title == "Round-trip")
+      check "title round-trips from the config" (gameInfoTitle info == "Round-trip")
       -- No `id:` in the synthesized config, so the id is a slug of the title.
-      check "id falls back to a slug of the title" (gid == "round-trip")
+      check "id falls back to a slug of the title" (gameInfoId info == "round-trip")
+      -- The optional chrome is absent from the synthesized config.
+      check "subtitle is unset without the field" (gameInfoSubtitle info == Nothing)
+      check "no edit link without an edit-url template"
+            (editLinkFor info "identity-morphism" == Nothing)
 
   -- 4. Every loaded level actually plays: its template has holes, its reference
   --    solution solves. This runs the real rzk type-checker on the loaded model.
   putStrLn "== play: every loaded level holes on its template and solves =="
   case buildGame (BL.toStrict (encode (bundleFor "Play" gameChapters))) of
     Left err       -> check ("buildGame error: " <> T.unpack err) False
-    Right (_, _, chs) -> flip mapM_ (loadedLevels chs) $ \lvl -> do
+    Right (_, chs) -> flip mapM_ (loadedLevels chs) $ \lvl -> do
       check (T.unpack (levelTitle lvl) <> ": template holes")
             (isHoles (checkLevel lvl (levelTemplate lvl)))
       check (T.unpack (levelTitle lvl) <> ": solution solves")
@@ -128,10 +132,16 @@ main = do
     Left _     -> putStrLn "skip - public/game.json not found (run `make bundle`)"
     Right json -> case buildGame json of
       Left err           -> check ("buildGame on public/game.json: " <> T.unpack err) False
-      Right (gid, title, chs) -> do
+      Right (info, chs) -> do
         check "bundled chapters equal RzkGame.Content" (chs == gameChapters)
-        check "bundled title equals RzkGame.Content" (title == gameTitle)
-        check "bundled id equals RzkGame.Content" (gid == Content.gameId)
+        check "bundled title equals RzkGame.Content" (gameInfoTitle info == gameTitle)
+        check "bundled id equals RzkGame.Content" (gameInfoId info == Content.gameId)
+        -- The bundle keys its files by path, so every item knows its source and
+        -- an `edit-url` template can point at it.
+        check "every bundled item knows its source file"
+              (all (\i -> sourceOf info i /= Nothing)
+                   [ puzzleId z | ch <- chs, sec <- chapterSections ch
+                                , SPuzzle z <- sectionItems sec ])
 
   -- 6. The progress-archive codec round-trips, rejects an unknown version, and
   --    drops non-string ("junk") values. Order is not significant, so compare
