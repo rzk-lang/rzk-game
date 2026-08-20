@@ -11,8 +11,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Bracket nesting is coloured by depth in the editor, so a pair reads as a pair, and a bracket with no partner is drawn as an error with a count above the result. rzk reports a missing `)` as a parse error at the end of the file, which says nothing about where the bracket belongs.
 - When the step onward skips over a starred extra — extras do not gate completion, so the green button passes them by — the extra is offered beside it as a second button, rather than being silently jumped over.
 
+### Changed
+
+- Re-pinned rzk past the [v0.11.1](https://github.com/rzk-lang/rzk/releases/tag/v0.11.1) release, to `develop`, for four things the game shows directly: a lemma whose result type is a motive application is offered as a hole candidate ([rzk#338](https://github.com/rzk-lang/rzk/pull/338)), so a level can teach `ind-path` in place of the built-in `idJ`; a type error is reported where the offending sub-term is rather than at the enclosing `#def`, which is what the editor's squiggle follows; checking continues past a declaration that fails, so one broken definition no longer hides the rest; and the formatter no longer eats a file's final newline. The language is unchanged, so every level checks as before.
+
 ### Fixed
 
+- The error squiggle underlines the span rzk blamed rather than the whole line. rzk locates a type error at the first character of the offending sub-term but says nothing about where it ends, so the underline runs to just before the enclosing bracket group closes, and to the end of the line when nothing encloses it. A parse error carries no column and still marks the whole line.
 - The editor grows with its content instead of scrolling inside itself. Past six rows the textarea scrolled while the highlight layer stacked over it could not, so the text slid out from under its own colours, the caret went off the bottom, and holes at the end of a long definition could not be reached. The highlight layer now sizes the box and the textarea is stretched over it, which also retires the manual resize handle.
 
 ## [0.5.0] - 2026-07-28

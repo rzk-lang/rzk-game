@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -21,6 +22,12 @@
 -- extra rule: a hole on the left matches anything. The binder-renaming dance in
 -- the scoped case is free-foil's own; only the hole rule and the recursive calls
 -- differ.
+--
+-- Nodes are matched through rzk's @UntypedNode@ pattern rather than @Node@, so
+-- the source position each node now carries is ignored. Two terms that differ
+-- only in where they were written are the same term for this purpose, and the
+-- classifier compares a tapped candidate against an authored solution, which
+-- never share positions.
 module RzkGame.Subsume
   ( subsumesSolution
   ) where
@@ -33,12 +40,12 @@ import           Data.Text                 (Text)
 
 import qualified Control.Monad.Foil          as Foil
 import qualified Control.Monad.Foil.Relative as Foil (liftRM)
-import           Control.Monad.Free.Foil     (AST (..), ScopedAST (..))
+import           Control.Monad.Free.Foil     (AST (Var), ScopedAST (..))
 import           Data.ZipMatchK              (zipMatchWith2)
 
 import           Language.Rzk.Foil.Convert   (toTermClosed)
-import           Language.Rzk.Foil.Syntax    (TermSig (HoleF))
-import qualified Language.Rzk.Foil.Syntax    as FT (Term)
+import           Language.Rzk.Foil.Syntax    (TermSig (HoleF), pattern UntypedNode)
+import qualified Language.Rzk.Foil.Syntax    as FT (ScopedTerm, Term)
 import           Language.Rzk.Syntax.Abs     hiding (Var)
 import           RzkGame.Parse               (safeParseModule)
 
@@ -92,9 +99,9 @@ varIdentTokens x = here ++ concat (gmapQ varIdentTokens x)
 -- holes of @cand@? A transcription of free-foil's @alphaEquiv@ with the leading
 -- hole rule added.
 subsumes :: Foil.Distinct n => Foil.Scope n -> FT.Term n -> FT.Term n -> Bool
-subsumes _scope (Node (HoleF _)) _ = True                  -- a hole matches anything
-subsumes _scope (Var x) (Var y)    = x == coerce y
-subsumes scope  (Node l) (Node r)  =
+subsumes _scope (UntypedNode (HoleF _)) _ = True           -- a hole matches anything
+subsumes _scope (Var x) (Var y)           = x == coerce y
+subsumes scope  (UntypedNode l) (UntypedNode r) =
   case zipMatchWith2 (unit . subsumesScoped scope) (unit . subsumes scope) l r of
     Nothing -> False
     Just _  -> True
@@ -108,8 +115,8 @@ subsumes _ _ _ = False
 subsumesScoped
   :: Foil.Distinct n
   => Foil.Scope n
-  -> ScopedAST Foil.NameBinder TermSig n
-  -> ScopedAST Foil.NameBinder TermSig n
+  -> FT.ScopedTerm n
+  -> FT.ScopedTerm n
   -> Bool
 subsumesScoped scope (ScopedAST binder1 body1) (ScopedAST binder2 body2) =
   case Foil.unifyPatterns binder1 binder2 of

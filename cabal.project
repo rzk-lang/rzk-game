@@ -28,10 +28,19 @@ packages: .
 -- deprecated since v0.5.0 are removed, and a binder repeated in one group is an
 -- error (#321) — the built-in game uses neither. Still builds under GHC 9.8+
 -- (the wasm toolchain provides 9.12).
+--
+-- Now pinned past that release, to `develop`, for four things the game shows
+-- directly. A lemma whose result type is a motive application is offered as a
+-- hole candidate (#338), so a level can teach `ind-path` in place of the
+-- built-in `idJ`. A type error is reported where the offending sub-term is
+-- rather than at the enclosing `#def`, which is what the editor's squiggle
+-- follows. Checking continues past a declaration that fails, so one broken
+-- definition no longer hides the rest. And the formatter no longer eats a
+-- file's final newline.
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: 9f8bb524255567ab4e91c8f8f0b9c1f0e07bffbf
+  tag: dfc1fe6dc220917c619e577a9b7bdfd2c7d5372e
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
