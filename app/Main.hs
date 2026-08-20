@@ -30,7 +30,7 @@ import           Control.Exception  (SomeException, evaluate, try)
 import           Data.List          (find, sort)
 import           Data.Map.Strict    (Map)
 import qualified Data.Map.Strict    as Map
-import           Data.Maybe         (fromMaybe, mapMaybe)
+import           Data.Maybe         (fromMaybe, isJust, mapMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
@@ -45,8 +45,8 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      tetrahedronLevel, tripleCompLevel,
                                      unfoldingSquareLevel, witnessAssocLevel,
                                      witnessSquareLevel)
-import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
-                                     parenBalance, tokClassName)
+import           RzkGame.Highlight  (Tok (..), errorSpan, highlight,
+                                     highlightLines, parenBalance, tokClassName)
 import           RzkGame.Input      (applyAbbrev, completions, insertionPoint,
                                      pendingAbbrev)
 import           RzkGame.Level
@@ -397,8 +397,8 @@ hsSelftest = do
       typeErrLines lvl e = case checkLevel lvl (refineFirstHole e (levelTemplate lvl)) of
         TypeError _ ls -> Just ls
         _              -> Nothing
-      garbageOK = maybe False (inEditable hom2Level) (typeErrLines hom2Level "asd")
-      branchOK  = maybe False (inEditable hom2Level) (typeErrLines hom2Level "s")
+      garbageOK = maybe False (inEditable hom2Level) (map fst <$> typeErrLines hom2Level "asd")
+      branchOK  = maybe False (inEditable hom2Level) (map fst <$> typeErrLines hom2Level "s")
   putStrLn ("   garbage 'asd' -> lines " <> show (typeErrLines hom2Level "asd"))
   putStrLn ("   wrong branch 's' -> lines " <> show (typeErrLines hom2Level "s"))
   putStrLn (if garbageOK && branchOK then "error lines: OK" else "ERROR LINES FAILED")
@@ -1451,7 +1451,7 @@ puzzleSlotView env m sid ix z =
       | otherwise =
           pretestControls env m z
           <> [ H.h3_ [] [ text "Your proof" ]
-             , editorView (m ^. editable) (resultErrorLines (m ^. result))
+             , editorView (m ^. editable) (resultErrorSpots (m ^. result))
              , abbrevView m
              , H.h3_ [] [ text "Moves" ]
              , movesView lvl m
@@ -1630,15 +1630,18 @@ preludeView m lvl =
 --
 -- Each logical line is wrapped in its own inline @<span>@, with the @\n@
 -- separators re-inserted as text between them (so the layer still matches the
--- textarea character for character). A line carrying a diagnostic gets the
--- @hl-errline@ class, which draws a wavy underline — the error squiggle. rzk
--- reports locations at line granularity, so a whole line is underlined.
-editorView :: MisoString -> [Int] -> View Model Action
-editorView code errLines =
+-- textarea character for character).
+--
+-- A line carrying a diagnostic gets the error squiggle, a wavy underline. When
+-- rzk located the error at a column, only the offending span is underlined
+-- ('errorSpan' bounds it by the enclosing bracket group); with no column — a
+-- parse error, say — the whole line is, which is all that is known.
+editorView :: MisoString -> [(Int, Maybe Int)] -> View Model Action
+editorView code errSpots =
   H.div_ [ P.class_ "editor-wrap" ]
     [ H.pre_ [ P.class_ "editor-hl" ]
         (intersperseNewlines
-           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ]
+           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines src) ]
          -- One newline more than the source: a @<pre>@ does not reserve a row for
          -- a trailing newline, so without this the box is a row short of the
          -- caret exactly when the player has just opened a new last line.
@@ -1650,14 +1653,40 @@ editorView code errLines =
         ]
     ]
   where
-    errSet = Set.fromList errLines
+    src = fromMisoString code
+    lineText i = case drop (i - 1) (T.splitOn "\n" src) of
+      l : _ -> l
+      []    -> ""
+    -- The columns to squiggle on a line: a span when a column was reported, the
+    -- whole line when one was not, and nothing when the line is clean.
+    marked i = case [ mc | (l, mc) <- errSpots, l == i ] of
+      []             -> Nothing
+      cols
+        | Just c : _ <- filter isJust cols -> Just (errorSpan (lineText i) c)
+        | otherwise                        -> Just (1, max 1 (T.length (lineText i)))
     lineSpan i toks =
-      H.span_ [ P.class_ (ms (lineCls i)) ]
-        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
-        | Tok cls txt <- toks
-        ]
-    lineCls :: Int -> T.Text
-    lineCls i = "hl-line" <> if Set.member i errSet then " hl-errline" else ""
+      H.span_ [ P.class_ "hl-line" ] $ case marked i of
+        Nothing       -> map tokSpan toks
+        Just (lo, hi) ->
+          let (before, rest)  = splitToksAt (lo - 1) toks
+              (inside, after) = splitToksAt (hi - lo + 1) rest
+          in map tokSpan before
+             <> [ H.span_ [ P.class_ "hl-errspan" ] (map tokSpan inside) | not (null inside) ]
+             <> map tokSpan after
+    tokSpan (Tok cls txt) =
+      H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+
+-- | Split a token stream after @n@ characters, cutting a token in two when the
+-- boundary falls inside it. Lossless, like the tokeniser it consumes: the two
+-- halves still concatenate to the original text.
+splitToksAt :: Int -> [Tok] -> ([Tok], [Tok])
+splitToksAt n toks
+  | n <= 0 = ([], toks)
+splitToksAt _ [] = ([], [])
+splitToksAt n (t@(Tok cls txt) : ts)
+  | len <= n  = let (a, b) = splitToksAt (n - len) ts in (t : a, b)
+  | otherwise = ([Tok cls (T.take n txt)], Tok cls (T.drop n txt) : ts)
+  where len = T.length txt
 
 -- | The Unicode input method's hint row: while an abbreviation is being typed,
 -- the abbreviations it could still become, with what each produces.

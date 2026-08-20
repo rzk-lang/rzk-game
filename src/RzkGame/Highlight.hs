@@ -22,10 +22,12 @@ module RzkGame.Highlight
   , tokClassName
   , parenDepthColours
   , parenBalance
+  , errorSpan
   ) where
 
 import           Data.Char  (isSpace)
 import           Data.List  (mapAccumL)
+import           Data.Maybe (fromMaybe)
 import qualified Data.Set  as Set
 import           Data.Text  (Text)
 import qualified Data.Text as T
@@ -153,6 +155,55 @@ parenBalance = foldl step (0, 0) . concat . highlightLines
       Tok ParenBad "(" -> (unclosed + 1, stray)
       Tok ParenBad ")" -> (unclosed, stray + 1)
       _                -> (unclosed, stray)
+
+-- | The columns to underline for an error reported at a given column.
+--
+-- rzk locates a type error at a point, the first character of the offending
+-- sub-term, and says nothing about where that sub-term ends. Underlining from
+-- there to the end of the line would trail past it; underlining the whole line
+-- (which is what happens with no column at all) starts before it. Bracketing is
+-- the structure available without re-parsing: a sub-term reported inside a
+-- bracket group ends no later than that group does, so the underline runs to
+-- just before the closing bracket.
+--
+-- Returns an inclusive @(start, end)@ in 1-based columns. Falls back to the end
+-- of the line when the reported column is not inside a group that closes on this
+-- line, which is the honest answer — nothing here bounds it any tighter.
+-- Brackets inside a comment do not count, since a comment is one token.
+errorSpan :: Text -> Int -> (Int, Int)
+errorSpan line start = (start, fromMaybe eol closeBefore)
+  where
+    eol  = T.length line
+    -- Bracket columns on this line, as (column, isOpen).
+    brackets = go 1 (highlight line)
+      where
+        go _ [] = []
+        go c (Tok cls txt : ts)
+          | isParen cls, txt == "(" = (c, True)  : go (c + n) ts
+          | isParen cls, txt == ")" = (c, False) : go (c + n) ts
+          | otherwise               = go (c + n) ts
+          where n = T.length txt
+        isParen Paren{} = True
+        isParen ParenBad = True
+        isParen _        = False
+    -- The innermost group still open just before the reported column.
+    enclosing = case foldl step [] (takeWhile ((< start) . fst) brackets) of
+      c : _ -> Just c
+      []    -> Nothing
+      where
+        step open (c, True)  = c : open
+        step open (_, False) = drop 1 open
+    -- Where that group closes, if it closes on this line.
+    closeBefore = do
+      open <- enclosing
+      let after = dropWhile ((<= open) . fst) brackets
+      close <- closeOf (0 :: Int) after
+      pure (max start (close - 1))
+    closeOf _ [] = Nothing
+    closeOf depth ((c, isOpen) : rest)
+      | isOpen        = closeOf (depth + 1) rest
+      | depth == 0    = Just c
+      | otherwise     = closeOf (depth - 1) rest
 
 -- | CSS class for a token category (paired with the rules in static/index.html).
 tokClassName :: TokClass -> Text

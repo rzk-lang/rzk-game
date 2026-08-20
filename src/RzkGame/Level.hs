@@ -28,6 +28,7 @@ module RzkGame.Level
   , refineFirstHole
   , renderResult
   , resultErrorLines
+  , resultErrorSpots
   , humanize
   , hintMatchesGoal
   , visibleHints
@@ -194,7 +195,10 @@ visibleHints hints mgoal shown = go 0 0 hints
 data CheckResult
   = NotChecked              -- ^ nothing checked yet
   | ParseError Text (Maybe Int) -- ^ the source did not parse (+ editable line)
-  | TypeError Text [Int]    -- ^ a genuine type error (+ editable lines to squiggle)
+  | TypeError Text [(Int, Maybe Int)]
+      -- ^ a genuine type error, with the editable @(line, column)@ spots to
+      -- squiggle. The column is where rzk says the offending sub-term starts;
+      -- 'Nothing' when it recorded none, in which case the whole line is marked.
   | Holes [HoleView]        -- ^ unsolved holes, each with its goal + local context
   | Solved                  -- ^ typechecks with no remaining holes (and passes any behaviour checks)
   | CheckFailed [Text]      -- ^ hole-free and well-typed, but a required behaviour check fails (the failed propositions)
@@ -206,9 +210,14 @@ instance NFData CheckResult
 -- | The editable-region line(s) a result wants squiggled (empty when there is
 -- nothing to underline). Consumed by the editor overlay.
 resultErrorLines :: CheckResult -> [Int]
-resultErrorLines = \case
-  ParseError _ ml -> maybeToList ml
-  TypeError _ ls  -> ls
+resultErrorLines = map fst . resultErrorSpots
+
+-- | The @(line, column)@ spots a result wants squiggled in the editable region.
+-- A parse error is reported at line granularity, so it carries no column.
+resultErrorSpots :: CheckResult -> [(Int, Maybe Int)]
+resultErrorSpots = \case
+  ParseError _ ml -> [ (l, Nothing) | l <- maybeToList ml ]
+  TypeError _ ss  -> ss
   _               -> []
 
 -- | A single hole with every part pre-rendered to display text, so the UI can
@@ -583,11 +592,16 @@ checkLevelPure lvl editable =
       let r = l - editableStart + 1
       in if r >= 1 && r <= editableSpan then Just r else Nothing
 
-    -- A type error's line, mapped into the editable region (empty when it has no
-    -- recorded location, or the location is outside the editable region).
+    -- A type error's spot, mapped into the editable region (empty when it has no
+    -- recorded location, or the location is outside the editable region). The
+    -- column needs no mapping: the editable region is concatenated verbatim, so
+    -- a line's columns are the same in the level source and in the editor.
     errorLines err =
-      mapMaybe toEditableLine
-        (maybeToList (locationLine =<< locationOfTypeError err))
+      [ (l', locationColumn loc)
+      | Just loc <- [locationOfTypeError err]
+      , Just l   <- [locationLine loc]
+      , Just l'  <- [toEditableLine l]
+      ]
 
 -- | Tap-to-refine: replace the first hole in the text with the given insertion.
 -- This is how a tap turns into an edit — the engine re-checks the rewritten
@@ -769,7 +783,7 @@ renderResult :: CheckResult -> Text
 renderResult = \case
   NotChecked      -> "(not checked)"
   ParseError e ml -> "Parse error" <> atLine (maybeToList ml) <> ":\n" <> e
-  TypeError e ls  -> "Type error" <> atLine ls <> ":\n" <> e
+  TypeError e ss  -> "Type error" <> atLine (map fst ss) <> ":\n" <> e
   Holes hs        -> tshow (length hs) <> " hole(s):\n\n"
                        <> T.intercalate "\n" (map renderHoleView hs)
   Solved          -> "Solved: no holes, typechecks."

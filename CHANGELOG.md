@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- The error squiggle underlines the span rzk blamed rather than the whole line. rzk locates a type error at the first character of the offending sub-term but says nothing about where it ends, so the underline runs to just before the enclosing bracket group closes, and to the end of the line when nothing encloses it. A parse error carries no column and still marks the whole line.
 - The editor grows with its content instead of scrolling inside itself. Past six rows the textarea scrolled while the highlight layer stacked over it could not, so the text slid out from under its own colours, the caret went off the bottom, and holes at the end of a long definition could not be reached. The highlight layer now sizes the box and the textarea is stretched over it, which also retires the manual resize handle.
 
 ## [0.5.0] - 2026-07-28
