@@ -1881,9 +1881,17 @@ moveButton kind ins =
 -- bottom of the level page, so the controls are always in the same place (muscle
 -- memory) and never blend into the variable, per-hole move buttons. The Moves
 -- panel stays in the document flow beside the goal and holes.
+-- | The controls, as a sticky footer bar.
+--
+-- Sticky only while the level map is closed. The map is rendered above the level
+-- section, but a bottom-sticky bar floats up to the viewport edge for as long as
+-- its own section is in view, so scrolling through an open map put the bar over
+-- the map's own controls: the level tiles, and the export / import / reset row at
+-- its foot. Opening the map is navigation, not editing, so the bar drops back
+-- into flow and nothing is covered.
 actionBar :: Model -> View Model Action
 actionBar m =
-  H.div_ [ P.class_ "action-bar" ]
+  H.div_ [ P.class_ (ms ("action-bar" <> if m ^. mapOpen then " unpinned" else "" :: T.Text)) ]
     [ H.div_ [ P.class_ "buttons" ]
         [ H.button_ [ P.class_ "primary", H.onClick Check ] [ text "Check" ]
         , H.button_ [ P.class_ "secondary", H.onClick Format ] [ text "Format" ]

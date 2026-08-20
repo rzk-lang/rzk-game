@@ -169,6 +169,10 @@
                   padding: .5rem 1rem; background: rgba(255, 255, 255, .97);
                   border-top: 2px solid #e3e3e3;
                   box-shadow: 0 -2px 8px rgba(0, 0, 0, .07); z-index: 5; }
+    /* While the level map is open the bar returns to the flow. Pinned, it floats
+       up over whatever sits at the viewport edge, which with the map open is the
+       map's own tiles and its export / import / reset row. */
+    .action-bar.unpinned { position: static; box-shadow: none; }
     .buttons { margin: .5rem 0; }
     .action-bar .buttons { margin: 0; display: flex; flex-wrap: wrap;
                            align-items: center; gap: .5rem; }

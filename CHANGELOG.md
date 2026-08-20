@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The controls no longer cover the level map. The Check / Format / Undo / Reset bar is sticky at the foot of the viewport, and the map is rendered above the level section, so scrolling through an open map put the bar over the map's own controls: the level tiles, and the export / import / reset row at its foot. The bar now returns to the flow while the map is open.
+
 ## [0.6.1] - 2026-08-20
 
 ### Fixed
