@@ -13,6 +13,7 @@
   <script src="prose.js"></script>
   <!-- Progress export/import helpers (download, pickImport); see Main.hs. -->
   <script src="download.js"></script>
+  <script src="caret.js"></script>
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
@@ -53,9 +54,25 @@
                             font-size: .95rem; }
     .prelude { color: #555; font-size: .85rem; margin-top: .3rem;
                white-space: pre-wrap; overflow-wrap: break-word; }
+    /* The re-ascription clauses spelling out what a #data declaration generates.
+       Real rzk, shown in place, but rzk's words rather than the author's: dimmed
+       and marked with a left rule so the distinction is visible at a glance. */
+    .prelude-gen { opacity: .72; border-left: 2px solid #cbd5e0;
+                   margin-left: -.5rem; padding-left: .4rem; }
+    .prelude-gen .tok-plain { font-style: italic; }
     /* L1 editor: a transparent textarea stacked over a highlighted <pre>.
-       Both share identical metrics so the coloured layer aligns with typing. */
-    .editor-wrap { position: relative; }
+       Both share identical metrics so the coloured layer aligns with typing.
+
+       The <pre> is the one in normal flow, so it sizes the box: it grows with
+       its content, wrapped long lines included, and the textarea is stretched
+       over it. The editor therefore auto-grows and never scrolls inside itself,
+       which is what keeps the two layers in step -- a textarea that scrolls
+       internally slides its text out from under a highlight layer that cannot
+       follow. The min-height holds the box at six rows while it is short. */
+    .editor-wrap {
+      position: relative;
+      min-height: calc(6 * 1.45rem + 1rem + 2px);   /* 6 lines + padding + border */
+    }
     .editor, .editor-hl {
       margin: 0; width: 100%; box-sizing: border-box;
       font-family: ui-monospace, monospace; font-size: 1rem; line-height: 1.45;
@@ -63,14 +80,34 @@
       white-space: pre-wrap; overflow-wrap: break-word; tab-size: 2;
     }
     .editor {
-      position: relative; z-index: 1; resize: vertical;
+      position: absolute; inset: 0; z-index: 1; resize: none; overflow: hidden;
       color: transparent; background: transparent; caret-color: #000;
     }
     .editor-hl {
-      position: absolute; inset: 0; z-index: 0; overflow: hidden;
+      position: relative; z-index: 0; min-height: inherit;
       pointer-events: none; border-color: transparent; background: #fff;
       color: #222;
     }
+    /* Bracket nesting, coloured by depth so a pair reads as a pair; the cycle
+       repeats every four levels (RzkGame.Highlight.parenDepthColours). A bracket
+       with no partner is drawn as an error instead. */
+    .tok-paren-0 { color: #0550ae; }
+    .tok-paren-1 { color: #bc4c00; }
+    .tok-paren-2 { color: #1a7f37; }
+    .tok-paren-3 { color: #6639ba; }
+    .tok-paren-bad { color: #cf222e; font-weight: 700; background: #ffebe9;
+                     border-radius: 3px; }
+    .paren-note  { margin: .3rem 0; font-size: .85rem; color: #cf222e; }
+    /* The Unicode input method's hint row, shown under the editor while an
+       abbreviation is open. Monospace, so the keys line up with the editor. */
+    .abbrevs { margin: .25rem 0 .4rem; display: flex; flex-wrap: wrap;
+               gap: .1rem .5rem; align-items: baseline;
+               font-family: ui-monospace, monospace; font-size: .8rem; }
+    .abbrevs-head { font-weight: 700; color: #8250df; margin-right: .2rem; }
+    .abbrevs-more { color: #999; }
+    .abbrev { color: #666; }
+    .abbrev-key { color: #666; }
+    .abbrev-ch  { margin-left: .25rem; color: #222; font-size: .95rem; }
     .tok-kw      { color: #8250df; font-weight: 600; }
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }
@@ -113,9 +150,13 @@
         font-weight: 700; }
     .progress { margin: 0 0 .8rem; font-size: .85rem; color: #777; }
     .progress.done { color: #2a7a2a; font-weight: 600; }
-    .advance { margin: .5rem 0; }
+    .advance { margin: .5rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     .advance button { background: #dfd; border: 1px solid #7c7; border-radius: 6px;
                       cursor: pointer; }
+    /* The optional step, when the onward step skips over a starred extra: the
+       amber of the extras counter elsewhere, so the star reads as the same thing. */
+    .advance button.advance-extra { background: #fdf3d6; border-color: #c79a00;
+                                    color: #6b5200; }
     .all-done { margin: .5rem 0; padding: .6rem; background: #dff5df;
                 border: 1px solid #7c7; border-radius: 6px; font-weight: 600;
                 color: #285028; }
@@ -163,6 +204,7 @@
     .buttons button:disabled:hover { background: #fff; }
     .levels button:hover { border-color: #999; }
     .advance button:hover { background: #cfe9cf; }
+    .advance button.advance-extra:hover { background: #f7e7b8; }
     /* Linear prev / current / next navigation footer. */
     .nav { display: flex; align-items: center; justify-content: space-between;
            gap: .5rem; margin: 1.2rem 0 .3rem; padding-top: .6rem;
