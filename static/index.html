@@ -54,8 +54,18 @@
     .prelude { color: #555; font-size: .85rem; margin-top: .3rem;
                white-space: pre-wrap; overflow-wrap: break-word; }
     /* L1 editor: a transparent textarea stacked over a highlighted <pre>.
-       Both share identical metrics so the coloured layer aligns with typing. */
-    .editor-wrap { position: relative; }
+       Both share identical metrics so the coloured layer aligns with typing.
+
+       The <pre> is the one in normal flow, so it sizes the box: it grows with
+       its content, wrapped long lines included, and the textarea is stretched
+       over it. The editor therefore auto-grows and never scrolls inside itself,
+       which is what keeps the two layers in step -- a textarea that scrolls
+       internally slides its text out from under a highlight layer that cannot
+       follow. The min-height holds the box at six rows while it is short. */
+    .editor-wrap {
+      position: relative;
+      min-height: calc(6 * 1.45rem + 1rem + 2px);   /* 6 lines + padding + border */
+    }
     .editor, .editor-hl {
       margin: 0; width: 100%; box-sizing: border-box;
       font-family: ui-monospace, monospace; font-size: 1rem; line-height: 1.45;
@@ -63,11 +73,11 @@
       white-space: pre-wrap; overflow-wrap: break-word; tab-size: 2;
     }
     .editor {
-      position: relative; z-index: 1; resize: vertical;
+      position: absolute; inset: 0; z-index: 1; resize: none; overflow: hidden;
       color: transparent; background: transparent; caret-color: #000;
     }
     .editor-hl {
-      position: absolute; inset: 0; z-index: 0; overflow: hidden;
+      position: relative; z-index: 0; min-height: inherit;
       pointer-events: none; border-color: transparent; background: #fff;
       color: #222;
     }

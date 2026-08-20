@@ -1534,8 +1534,11 @@ preludeView lvl =
     ]
 
 -- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
--- The pre is absolutely positioned to fill the wrapper, which is sized by the
--- textarea, so the two stay the same height (even on manual resize). Both share
+-- The @<pre>@ is the layer in normal flow, so it sizes the box, and the textarea
+-- is stretched over it. That way round the editor grows with what the player
+-- types — wrapped long lines included — and never scrolls inside itself, which is
+-- what keeps the two layers aligned: a textarea that scrolls internally slides
+-- its text out from under a highlight layer that cannot follow. Both share
 -- identical metrics in CSS, so the coloured layer lines up with the text the
 -- player types. The tokeniser is lossless, so no character is dropped or added.
 --
@@ -1549,10 +1552,13 @@ editorView code errLines =
   H.div_ [ P.class_ "editor-wrap" ]
     [ H.pre_ [ P.class_ "editor-hl" ]
         (intersperseNewlines
-           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ])
+           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ]
+         -- One newline more than the source: a @<pre>@ does not reserve a row for
+         -- a trailing newline, so without this the box is a row short of the
+         -- caret exactly when the player has just opened a new last line.
+         <> [ text "\n" ])
     , H.textarea_
         [ P.class_ "editor"
-        , P.rows_ "6"
         , P.value_ code
         , H.onInput SetEditable
         ]
