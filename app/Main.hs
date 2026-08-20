@@ -73,7 +73,8 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- 'main' (or a test entry point) from the result of 'loadGame', then threaded
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
-  { envTitle    :: T.Text
+  { envGameId   :: T.Text   -- ^ namespaces the player's saved progress ('storageKey')
+  , envTitle    :: T.Text
   , envChapters :: [Chapter]
   , envSections :: [Section]
   , envSlots    :: [Slot]
@@ -81,9 +82,9 @@ data GameEnv = GameEnv
   , envRequiresTyping :: [Bool]  -- ^ per-level "requires typing" badge, parallel to 'envLevels'
   }
 
-mkGameEnv :: T.Text -> [Chapter] -> GameEnv
-mkGameEnv title chapters =
-  GameEnv title chapters secs (slotsOfSections secs) levels (map requiresTyping levels)
+mkGameEnv :: T.Text -> T.Text -> [Chapter] -> GameEnv
+mkGameEnv gid title chapters =
+  GameEnv gid title chapters secs (slotsOfSections secs) levels (map requiresTyping levels)
   where
     secs   = chaptersSections chapters
     levels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
@@ -101,15 +102,15 @@ gameJsonKey = "rzk-game-json"
 -- | Read the stashed @game.json@, build the title and chapters, and return them.
 -- Any failure (no bundle, malformed JSON, empty game) returns the built-in
 -- fallback.
-loadGame :: IO (T.Text, [Chapter])
+loadGame :: IO (T.Text, T.Text, [Chapter])
 loadGame = do
   mjson <- getLocalStorage gameJsonKey
   case mjson of
     Just s
       | let t = fromMisoString s, not (T.null t)
-      , Right (title, chapters) <- buildGame (encodeUtf8 t)
-      , not (null chapters) -> pure (title, chapters)
-    _ -> pure (Content.gameTitle, Content.gameChapters)
+      , Right (gid, title, chapters) <- buildGame (encodeUtf8 t)
+      , not (null chapters) -> pure (gid, title, chapters)
+    _ -> pure (Content.gameId, Content.gameTitle, Content.gameChapters)
 
 -- | UI state. The current position is a /slot/ index; solved puzzles, viewed
 -- prose, pre-test answers, and unlock overrides are persisted to @localStorage@.
@@ -250,8 +251,8 @@ data Action
 
 main :: IO ()
 main = do
-  (title, chapters) <- loadGame
-  let env       = mkGameEnv title chapters
+  (gid, title, chapters) <- loadGame
+  let env       = mkGameEnv gid title chapters
   importResult <- applyPendingImport env
 #ifdef INTERACTIVE
   live defaultEvents (mkApp env importResult)
@@ -274,8 +275,8 @@ foreign export javascript "hs_progresscheck" hsProgressCheck :: IO ()
 -- cannot: 'getLocalStorage' → 'buildGame' → 'checkLevel'.
 hsGameCheck :: IO ()
 hsGameCheck = do
-  (title, chapters) <- loadGame
-  let env  = mkGameEnv title chapters
+  (gid, title, chapters) <- loadGame
+  let env  = mkGameEnv gid title chapters
       secs = envSections env
       lvls = envLevels env
   putStrLn ("loaded sections: " <> show (length secs))
@@ -308,12 +309,12 @@ hsGameCheck = do
 -- wrong-version archive is rejected and changes nothing.
 hsProgressCheck :: IO ()
 hsProgressCheck = do
-  (title, chapters) <- loadGame
-  let env = mkGameEnv title chapters
+  (gid, title, chapters) <- loadGame
+  let env = mkGameEnv gid title chapters
   -- Seed a representative slice of player data.
-  setLocalStorage progressKey      "0,2,5"
-  setLocalStorage viewedKey        "morphisms-intro,functions-intro"
-  setLocalStorage pretestKey       "map-point=familiar"
+  setLocalStorage (progressKey env) "0,2,5"
+  setLocalStorage (viewedKey env)   "morphisms-intro,functions-intro"
+  setLocalStorage (pretestKey env)  "map-point=familiar"
   setLocalStorage (draftKey env 0) "#def my-id (A : U) (x : A)\n  : hom A x x\n  := ?"
   before <- gatherProgress env
   let archive = encodeArchive before
@@ -339,11 +340,35 @@ hsProgressCheck = do
   -- A wrong-version archive is rejected and leaves the restored state untouched.
   setLocalStorage importScratchKey "{\"version\": 2, \"saved\": {\"rzk-game-progress\": \"9\"}}"
   res2 <- applyPendingImport env
-  prog  <- getLocalStorage progressKey
+  prog  <- getLocalStorage (progressKey env)
   let rejectedOk = case res2 of Just (Left _) -> True; _ -> False
       untouched  = prog == Just "0,2,5"
   putStrLn (if rejectedOk && untouched
               then "bad-version rejected: OK" else "BAD-VERSION REJECT FAILED")
+
+  -- The namespacing migration: progress saved under the old unprefixed keys is
+  -- adopted once, and does not come back to undo a later Reset.
+  clearPlayerData env
+  removeLocalStorage (migratedKey env)
+  setLocalStorage (legacyStorageKey progressName) "0,1"
+  setLocalStorage (legacyStorageKey viewedName)   "morphisms-intro"
+  _ <- readLoadedState env                       -- runs migrateLegacyKeys
+  adoptedProg <- getLocalStorage (progressKey env)
+  adoptedView <- getLocalStorage (viewedKey env)
+  legacyLeft  <- getLocalStorage (legacyStorageKey progressName)
+  -- A Reset after the migration must stick: the legacy value is still there, so
+  -- a second pass would silently restore it if the marker were not honoured.
+  clearPlayerData env
+  _ <- readLoadedState env
+  afterReset <- getLocalStorage (progressKey env)
+  let adoptedOk = adoptedProg == Just "0,1" && adoptedView == Just "morphisms-intro"
+      keptOk    = legacyLeft == Just "0,1"   -- copied, not moved: see migrateLegacyKeys
+      resetOk   = afterReset == Nothing
+  putStrLn ("migration: adopted=" <> show adoptedOk
+            <> ", legacy kept=" <> show keptOk
+            <> ", reset sticks=" <> show resetOk)
+  putStrLn (if adoptedOk && keptOk && resetOk
+              then "legacy migration: OK" else "LEGACY MIGRATION FAILED")
 
 -- | Headless proof that the engine runs in wasm: for every level, check the
 -- starting template (holes) and the reference solution (solved); then exercise
@@ -353,7 +378,7 @@ hsSelftest :: IO ()
 hsSelftest = do
   -- The self-test exercises the full built-in game (15 levels, fixed ids and
   -- order), independent of whatever game.json a build happens to load.
-  let env          = mkGameEnv Content.gameTitle Content.gameChapters
+  let env          = mkGameEnv Content.gameId Content.gameTitle Content.gameChapters
       gameLevels   = envLevels   env
       gameSections = envSections env
       slots        = envSlots    env
@@ -644,11 +669,37 @@ enterSlotPure env i m = case slotAt env i of
          , _caret = Nothing }
 
 -- localStorage keys.
-progressKey, viewedKey, pretestKey, unlockedKey :: MisoString
-progressKey = "rzk-game-progress"
-viewedKey   = "rzk-game-viewed"
-pretestKey  = "rzk-game-pretest"
-unlockedKey = "rzk-game-unlocked"
+-- | A per-game @localStorage@ key: @rzk-game-<game id>-<name>@.
+--
+-- The names are namespaced because two games can share an origin. GitHub Pages
+-- serves @rzk-lang.github.io/warmup-game/@ and @/yoneda-game/@ from one origin,
+-- differing only by path, and @localStorage@ is per-origin — so unnamespaced
+-- keys made playing one game overwrite the other's progress, silently, because
+-- a solved id the current game does not know is dropped on read and gone on the
+-- next write.
+--
+-- Only progress is namespaced. A preference ('formatOnCheckKey',
+-- 'showMovesKey') is about the player rather than the game, so it stays shared.
+storageKey :: GameEnv -> T.Text -> MisoString
+storageKey env name = ms ("rzk-game-" <> envGameId env <> "-" <> name)
+
+-- | The pre-namespacing spelling of a key, @rzk-game-<name>@. Read once by
+-- 'migrateLegacyKeys' and otherwise unused.
+legacyStorageKey :: T.Text -> MisoString
+legacyStorageKey name = ms ("rzk-game-" <> name)
+
+-- | The names of the namespaced progress keys, without their prefix.
+progressName, viewedName, pretestName, unlockedName :: T.Text
+progressName = "progress"
+viewedName   = "viewed"
+pretestName  = "pretest"
+unlockedName = "unlocked"
+
+progressKey, viewedKey, pretestKey, unlockedKey :: GameEnv -> MisoString
+progressKey env = storageKey env progressName
+viewedKey   env = storageKey env viewedName
+pretestKey  env = storageKey env pretestName
+unlockedKey env = storageKey env unlockedName
 
 -- | The solved set is stored as a comma-separated list of puzzle /ids/, e.g.
 -- @"my-id,map-point"@, so reordering levels does not reassign saved progress.
@@ -694,28 +745,28 @@ decodePretest = Map.fromList . mapMaybe dec . T.splitOn "," . fromMisoString
       _                                   -> Nothing
 
 readProgress :: GameEnv -> IO (Set Int)
-readProgress env = maybe Set.empty (decodeSolved env) <$> getLocalStorage progressKey
+readProgress env = maybe Set.empty (decodeSolved env) <$> getLocalStorage (progressKey env)
 
 saveProgress :: GameEnv -> Set Int -> IO ()
-saveProgress env = setLocalStorage progressKey . encodeSolved env
+saveProgress env = setLocalStorage (progressKey env) . encodeSolved env
 
-readViewed :: IO (Set T.Text)
-readViewed = maybe Set.empty decodeTextSet <$> getLocalStorage viewedKey
+readViewed :: GameEnv -> IO (Set T.Text)
+readViewed env = maybe Set.empty decodeTextSet <$> getLocalStorage (viewedKey env)
 
-saveViewed :: Set T.Text -> IO ()
-saveViewed = setLocalStorage viewedKey . encodeTextSet
+saveViewed :: GameEnv -> Set T.Text -> IO ()
+saveViewed env = setLocalStorage (viewedKey env) . encodeTextSet
 
-readPretest :: IO (Map T.Text PretestAnswer)
-readPretest = maybe Map.empty decodePretest <$> getLocalStorage pretestKey
+readPretest :: GameEnv -> IO (Map T.Text PretestAnswer)
+readPretest env = maybe Map.empty decodePretest <$> getLocalStorage (pretestKey env)
 
-savePretest :: Map T.Text PretestAnswer -> IO ()
-savePretest = setLocalStorage pretestKey . encodePretest
+savePretest :: GameEnv -> Map T.Text PretestAnswer -> IO ()
+savePretest env = setLocalStorage (pretestKey env) . encodePretest
 
-readUnlocked :: IO (Set T.Text)
-readUnlocked = maybe Set.empty decodeTextSet <$> getLocalStorage unlockedKey
+readUnlocked :: GameEnv -> IO (Set T.Text)
+readUnlocked env = maybe Set.empty decodeTextSet <$> getLocalStorage (unlockedKey env)
 
-saveUnlocked :: Set T.Text -> IO ()
-saveUnlocked = setLocalStorage unlockedKey . encodeTextSet
+saveUnlocked :: GameEnv -> Set T.Text -> IO ()
+saveUnlocked env = setLocalStorage (unlockedKey env) . encodeTextSet
 
 -- | The format-on-check preference, stored as @"1"@ / @"0"@. Absent (or any
 -- other value) reads as off, so the default is never to reformat on a check.
@@ -753,9 +804,11 @@ data LoadedState = LoadedState
   , lsShowMoves     :: Bool
   }
 
+-- Runs the one-time namespacing migration first, so the reads below see the
+-- adopted values rather than an empty namespace.
 readLoadedState :: GameEnv -> IO LoadedState
-readLoadedState env = LoadedState
-  <$> readProgress env <*> readViewed <*> readPretest <*> readUnlocked
+readLoadedState env = migrateLegacyKeys env >> LoadedState
+  <$> readProgress env <*> readViewed env <*> readPretest env <*> readUnlocked env
   <*> readFormatOnCheck <*> readShowMoves
 
 -- | Per-level draft storage. Each puzzle's in-progress text is saved under its
@@ -764,19 +817,23 @@ readLoadedState env = LoadedState
 -- mix up drafts; a draft for a level no longer in the game lingers, harmlessly
 -- unread. (If an index somehow has no id, fall back to the numeric form.)
 draftKey :: GameEnv -> Int -> MisoString
-draftKey env i = "rzk-game-draft-" <> ms (fromMaybe (tshow i) (puzzleIdByIx env i))
+draftKey env i = storageKey env ("draft-" <> fromMaybe (tshow i) (puzzleIdByIx env i))
 
--- | The pre-id draft key for a puzzle index: @rzk-game-draft-<index>@. Read as a
--- fallback so a draft saved by an older build is not lost, and cleaned up on
--- 'removeDraft'. No longer written.
-legacyDraftKey :: Int -> MisoString
-legacyDraftKey i = "rzk-game-draft-" <> ms (show i)
+-- | The pre-namespacing draft keys for a puzzle: @rzk-game-draft-<id>@ and,
+-- older still, @rzk-game-draft-<index>@. Read as fallbacks so a draft saved by an
+-- older build is not lost, and cleaned up on 'removeDraft'. No longer written.
+legacyDraftKeys :: GameEnv -> Int -> [MisoString]
+legacyDraftKeys env i =
+  [ ms ("rzk-game-draft-" <> fromMaybe (tshow i) (puzzleIdByIx env i))
+  , ms ("rzk-game-draft-" <> tshow i)
+  ]
 
 saveDraft :: GameEnv -> Int -> MisoString -> IO ()
 saveDraft env i = setLocalStorage (draftKey env i)
 
 removeDraft :: GameEnv -> Int -> IO ()
-removeDraft env i = removeLocalStorage (draftKey env i) >> removeLocalStorage (legacyDraftKey i)
+removeDraft env i =
+  mapM_ removeLocalStorage (draftKey env i : legacyDraftKeys env i)
 
 -- | Read a puzzle's saved draft, falling back to its template when none is
 -- stored, and return the action that installs it. The id-keyed draft is
@@ -786,9 +843,11 @@ removeDraft env i = removeLocalStorage (draftKey env i) >> removeLocalStorage (l
 -- quick navigation.
 loadDraftAction :: GameEnv -> Int -> IO Action
 loadDraftAction env i = do
-  saved  <- getLocalStorage (draftKey env i)
-  legacy <- maybe (getLocalStorage (legacyDraftKey i)) (pure . Just) saved
-  pure (ApplyText i (fromMaybe (ms (levelTemplate (nthLevel env i))) legacy))
+  saved <- firstPresent (draftKey env i : legacyDraftKeys env i)
+  pure (ApplyText i (fromMaybe (ms (levelTemplate (nthLevel env i))) saved))
+  where
+    firstPresent []       = pure Nothing
+    firstPresent (k : ks) = getLocalStorage k >>= maybe (firstPresent ks) (pure . Just)
 
 -- Progress export / import / reset ------------------------------------------
 
@@ -798,17 +857,67 @@ loadDraftAction env i = do
 -- load, not player data.
 playerDataKeys :: GameEnv -> [MisoString]
 playerDataKeys env =
-  [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey, showMovesKey]
-    ++ [ k | i <- [0 .. length (envLevels env) - 1], k <- [draftKey env i, legacyDraftKey i] ]
+  [progressKey env, viewedKey env, pretestKey env, unlockedKey env
+  , formatOnCheckKey, showMovesKey]
+    ++ [ k | i <- [0 .. length (envLevels env) - 1]
+           , k <- draftKey env i : legacyDraftKeys env i ]
 
--- | Whether a key from an imported archive is player data we will restore. The
--- four fixed keys, plus any per-level draft (accepted even for an index beyond
--- the current game, matching how a stale draft is otherwise tolerated).
-isPlayerDataKey :: T.Text -> Bool
-isPlayerDataKey k =
-  k `elem` map fromMisoString
-             [progressKey, viewedKey, pretestKey, unlockedKey, formatOnCheckKey, showMovesKey]
-    || "rzk-game-draft-" `T.isPrefixOf` k
+-- | A key from an imported archive, as this game should store it, or 'Nothing'
+-- when it is not player data we restore.
+--
+-- An archive written before the keys were namespaced names them
+-- @rzk-game-progress@, @rzk-game-draft-<id>@ and so on; those are re-pointed at
+-- this game's namespace, so an export taken from an older build still restores.
+-- A key already namespaced for this game passes through. One namespaced for a
+-- /different/ game is dropped rather than adopted: its ids belong to that game
+-- and would decode to nothing here.
+importedKey :: GameEnv -> T.Text -> Maybe MisoString
+importedKey env k
+  | k `elem` map fromMisoString [formatOnCheckKey, showMovesKey] = Just (ms k)
+  | Just name <- T.stripPrefix mine k   = Just (storageKey env name)
+  | Just name <- T.stripPrefix "rzk-game-" k
+  , name `elem` [progressName, viewedName, pretestName, unlockedName]
+      || "draft-" `T.isPrefixOf` name   = Just (storageKey env name)
+  | otherwise                           = Nothing
+  where
+    mine = "rzk-game-" <> envGameId env <> "-"
+
+-- | Adopt progress saved before the keys were namespaced, once.
+--
+-- Every namespaced key that is absent takes the value of its @rzk-game-<name>@
+-- predecessor, so a returning player keeps what they had. The old keys are left
+-- in place rather than moved: two games share an origin, so the legacy blob may
+-- belong to the other one, and whichever game loads first must not delete it out
+-- from under its owner. The game it does not belong to simply decodes ids it
+-- does not know to nothing, which is the same as starting fresh.
+--
+-- A marker records that this ran, so the migration cannot undo a later Reset by
+-- re-importing the legacy value. 'clearPlayerData' leaves the marker alone for
+-- exactly that reason.
+migrateLegacyKeys :: GameEnv -> IO ()
+migrateLegacyKeys env = do
+  done <- getLocalStorage (migratedKey env)
+  case done of
+    Just _  -> pure ()
+    Nothing -> do
+      mapM_ adopt (progressName : viewedName : pretestName : unlockedName : draftNames)
+      setLocalStorage (migratedKey env) "1"
+  where
+    draftNames =
+      [ "draft-" <> fromMaybe (tshow i) (puzzleIdByIx env i)
+      | i <- [0 .. length (envLevels env) - 1] ]
+    adopt name = do
+      current <- getLocalStorage (storageKey env name)
+      case current of
+        Just _  -> pure ()
+        Nothing -> do
+          legacy <- getLocalStorage (legacyStorageKey name)
+          mapM_ (setLocalStorage (storageKey env name)) legacy
+
+-- | Marks that 'migrateLegacyKeys' has run for this game. Deliberately outside
+-- 'playerDataKeys', so a Reset or an import does not clear it.
+migratedKey :: GameEnv -> MisoString
+migratedKey env = storageKey env "migrated"
 
 -- | The scratch key @download.js@ stashes a chosen import file under, read once
 -- at startup by 'applyPendingImport'.
@@ -852,9 +961,9 @@ applyPendingImport env = do
       case decodeArchive (fromMisoString raw) of
         Left err  -> pure (Just (Left err))
         Right kvs -> do
-          let keep = [ (k, v) | (k, v) <- kvs, isPlayerDataKey k ]
+          let keep = [ (k', v) | (k, v) <- kvs, Just k' <- [importedKey env k] ]
           clearPlayerData env
-          mapM_ (\(k, v) -> setLocalStorage (ms k) (ms v)) keep
+          mapM_ (uncurry setLocalStorage) [ (k, ms v) | (k, v) <- keep ]
           pure (Just (Right (length keep)))
 
 
@@ -931,11 +1040,11 @@ updateModel env = \case
                SlotProse _ p -> Set.insert (proseId p) v
                _             -> v
     viewed .= v'
-    if v' /= v then io_ (saveViewed v') else pure ()
+    if v' /= v then io_ (saveViewed env v') else pure ()
   SetPretest pid ans -> do
     pretest %= Map.insert pid ans
     pt <- use pretest
-    io_ (savePretest pt)
+    io_ (savePretest env pt)
     -- "I already know this" satisfies the pre-test, so jump ahead to the next
     -- unfinished step — the player expects marking familiarity to skip the
     -- material, not to leave them on the page. "Not familiar" stays put (its
@@ -952,7 +1061,7 @@ updateModel env = \case
   Unlock pid -> do
     unlocked %= Set.insert pid
     u <- use unlocked
-    io_ (saveUnlocked u)
+    io_ (saveUnlocked env u)
   InitProse src ref -> io_ (renderProseInto ref src)
   ApplyText i s -> do
     -- Ignore a draft that arrived after the player moved to another slot.
@@ -1070,7 +1179,7 @@ updateModel env = \case
           setResult NotChecked
           viewed %= Set.insert (proseId p)
           v <- use viewed
-          io_ (saveViewed v)
+          io_ (saveViewed env v)
         SlotPuzzle _ ix z -> do
           let t = levelTemplate (puzzleLevel z)
           putEditable (ms t)

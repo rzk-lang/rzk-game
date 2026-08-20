@@ -24,6 +24,7 @@ import           System.Exit          (exitFailure)
 import           Data.IORef
 
 import           RzkGame.Content      (gameLevels, gameChapters, gameTitle)
+import qualified RzkGame.Content      as Content
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
@@ -100,17 +101,19 @@ main = do
   putStrLn "== buildGame: the whole game round-trips through a JSON bundle =="
   case buildGame (BL.toStrict (encode (bundleFor "Round-trip" gameChapters))) of
     Left err          -> check ("buildGame error: " <> T.unpack err) False
-    Right (title, chs) -> do
+    Right (gid, title, chs) -> do
       check "round-trips to all chapters" (length chs == length gameChapters)
       check "chapters equal RzkGame.Content" (chs == gameChapters)
       check "title round-trips from the config" (title == "Round-trip")
+      -- No `id:` in the synthesized config, so the id is a slug of the title.
+      check "id falls back to a slug of the title" (gid == "round-trip")
 
   -- 4. Every loaded level actually plays: its template has holes, its reference
   --    solution solves. This runs the real rzk type-checker on the loaded model.
   putStrLn "== play: every loaded level holes on its template and solves =="
   case buildGame (BL.toStrict (encode (bundleFor "Play" gameChapters))) of
     Left err       -> check ("buildGame error: " <> T.unpack err) False
-    Right (_, chs) -> flip mapM_ (loadedLevels chs) $ \lvl -> do
+    Right (_, _, chs) -> flip mapM_ (loadedLevels chs) $ \lvl -> do
       check (T.unpack (levelTitle lvl) <> ": template holes")
             (isHoles (checkLevel lvl (levelTemplate lvl)))
       check (T.unpack (levelTitle lvl) <> ": solution solves")
@@ -125,9 +128,10 @@ main = do
     Left _     -> putStrLn "skip - public/game.json not found (run `make bundle`)"
     Right json -> case buildGame json of
       Left err           -> check ("buildGame on public/game.json: " <> T.unpack err) False
-      Right (title, chs) -> do
+      Right (gid, title, chs) -> do
         check "bundled chapters equal RzkGame.Content" (chs == gameChapters)
         check "bundled title equals RzkGame.Content" (title == gameTitle)
+        check "bundled id equals RzkGame.Content" (gid == Content.gameId)
 
   -- 6. The progress-archive codec round-trips, rejects an unknown version, and
   --    drops non-string ("junk") values. Order is not significant, so compare

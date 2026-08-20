@@ -37,6 +37,8 @@ module RzkGame.Spec
   , goalFromTemplate
   , postchecksFromBody
   , inventoryType
+  , gameIdOf
+  , slugify
   ) where
 
 import           Control.Applicative ((<|>))
@@ -73,13 +75,18 @@ instance FromJSON Bundle where
 
 -- | The table of contents (the @game.yaml@): a title and the ordered chapters.
 data GameSpec = GameSpec
-  { gsTitle    :: Text
+  { gsId       :: Maybe Text
+    -- ^ the game's stable identity, used to namespace saved progress
+    -- ('RzkGame.Spec.gameIdOf'). Optional: a game that does not set one is
+    -- identified by a slug of its title instead.
+  , gsTitle    :: Text
   , gsChapters :: [ChapterSpec]
   } deriving (Eq, Show)
 
 instance FromJSON GameSpec where
   parseJSON = withObject "GameSpec" $ \o -> GameSpec
-    <$> o .:? "title" .!= ""
+    <$> o .:? "id"
+    <*> o .:? "title" .!= ""
     <*> o .:? "chapters" .!= []
 
 -- | A chapter: an optional title grouping a run of sections. The top level of a
@@ -417,6 +424,35 @@ goalFromTemplate template =
     Right (Module _ _ cmds) -> case [ c | c@CommandDefine{} <- cmds ] of
       (c : _) -> Right (commandName c, closedType c, commandUses c)
       []      -> Left "template has no `#def` to read the goal from"
+
+-- | A game's stable identity, for namespacing the player's saved progress.
+--
+-- Two games served from one origin — @rzk-lang.github.io/warmup-game/@ and
+-- @/yoneda-game/@ differ only by path, and @localStorage@ is per-origin — would
+-- otherwise share one set of keys and overwrite each other's progress. The id
+-- keys them apart.
+--
+-- An explicit @id:@ in @game.yaml@ is what a game should set: it survives a
+-- retitling, where the fallback does not. Without one the title is slugified, so
+-- an existing game is namespaced sensibly without being edited, and a game with
+-- neither falls back to @game@.
+gameIdOf :: GameSpec -> Text
+gameIdOf gs = case gsId gs of
+  Just i | not (T.null (slugify i)) -> slugify i
+  _ -> case slugify (gsTitle gs) of
+    "" -> "game"
+    t  -> t
+
+-- | A text as a URL-ish slug: lower-cased, runs of anything that is not an
+-- unaccented letter or digit collapsed to a single @-@, and trimmed. Deliberately
+-- narrow, so a title in any script produces a short, stable, filesystem-safe key
+-- rather than raw Unicode in a @localStorage@ name.
+slugify :: Text -> Text
+slugify =
+  T.dropAround (== '-') . T.intercalate "-" . filter (not . T.null)
+    . T.split (not . keep) . T.toLower
+  where
+    keep c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 
 -- | The as-written type of a prelude definition, looked up by name. Parses the
 -- prelude and recovers the closed Π-type of the @#def@ or @#postulate@ of that
