@@ -88,6 +88,16 @@
       pointer-events: none; border-color: transparent; background: #fff;
       color: #222;
     }
+    /* Bracket nesting, coloured by depth so a pair reads as a pair; the cycle
+       repeats every four levels (RzkGame.Highlight.parenDepthColours). A bracket
+       with no partner is drawn as an error instead. */
+    .tok-paren-0 { color: #0550ae; }
+    .tok-paren-1 { color: #bc4c00; }
+    .tok-paren-2 { color: #1a7f37; }
+    .tok-paren-3 { color: #6639ba; }
+    .tok-paren-bad { color: #cf222e; font-weight: 700; background: #ffebe9;
+                     border-radius: 3px; }
+    .paren-note  { margin: .3rem 0; font-size: .85rem; color: #cf222e; }
     .tok-kw      { color: #8250df; font-weight: 600; }
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }

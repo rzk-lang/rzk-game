@@ -45,7 +45,7 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      unfoldingSquareLevel, witnessAssocLevel,
                                      witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
-                                     tokClassName)
+                                     parenBalance, tokClassName)
 import           RzkGame.Level
 import           RzkGame.Format     (formatEditable)
 import           RzkGame.Loader     (buildGame)
@@ -1931,14 +1931,28 @@ crashReport lvl editable err = T.unlines
 -- since the shown result was checked, it flags that the result is stale. (With
 -- the check running synchronously the result is otherwise always current; this
 -- covers the gap after typing, before the next Check or tap.)
+--
+-- Unbalanced brackets are called out here too, whether or not the result is
+-- stale. rzk reports a missing @)@ as a parse error at the end of the file,
+-- which says nothing about where the bracket should go, and the offending
+-- bracket is drawn in the editor above ('markUnmatched') — the count is the
+-- pointer to it.
 checkStatusView :: Model -> View Model Action
-checkStatusView m
-  | m ^. dirty && notChecked = text ""   -- nothing checked yet: no stale result to flag
-  | m ^. dirty               =
-      H.p_ [ P.class_ "check-stale" ]
-        [ text "● Edited since last check — press Check to update the result." ]
-  | otherwise                = text ""
-  where notChecked = case m ^. result of NotChecked -> True; _ -> False
+checkStatusView m = H.div_ [] (parenNote <> staleNote)
+  where
+    notChecked = case m ^. result of NotChecked -> True; _ -> False
+    staleNote
+      -- nothing checked yet: no stale result to flag
+      | m ^. dirty, not notChecked =
+          [ H.p_ [ P.class_ "check-stale" ]
+              [ text "● Edited since last check — press Check to update the result." ] ]
+      | otherwise = []
+    parenNote = case parenBalance (fromMisoString (m ^. editable)) of
+      (0, 0) -> []
+      (u, x) -> [ H.p_ [ P.class_ "paren-note" ] [ text (ms (message u x)) ] ]
+    message :: Int -> Int -> T.Text
+    message u x = "● Unbalanced brackets: " <> T.intercalate " and " (parts u x) <> "."
+    parts u x = [ tshow u <> " unclosed (" | u > 0 ] <> [ tshow x <> " stray )" | x > 0 ]
 
 resultView :: Level -> MisoString -> CheckResult -> View Model Action
 resultView lvl editable = \case
