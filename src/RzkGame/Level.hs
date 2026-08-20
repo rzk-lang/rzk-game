@@ -32,6 +32,7 @@ module RzkGame.Level
   , hintMatchesGoal
   , visibleHints
   , plainHintCount
+  , generatedScope
   , inventoryViolations
   , forbiddenViolations
   , gatePassed
@@ -54,10 +55,11 @@ import           RzkGame.Parse        (safeParseModule)
 import           RzkGame.Subsume      (subsumesSolution)
 
 import           Rzk.Diagnostic       (locationOfTypeError)
-import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
+import           Rzk.TypeCheck        (DeclKind (..), DeclView (..),
+                                       HoleEntry (..), HoleInfo (..),
                                        LocationInfo (..),
                                        OutputDirection (TopDown), checkedErrors,
-                                       ppTypeErrorInScopedContext,
+                                       declViews, ppTypeErrorInScopedContext,
                                        typecheckModulesWithHolesAndLemmas)
 
 -- | A granted lemma in a level's inventory: a prelude-defined name the level
@@ -241,6 +243,36 @@ toHoleView HoleInfo{..} = HoleView
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+-- | The names a prelude brings into scope that are not written in it: the
+-- constructors and eliminators a @#data@ declaration generates, each with its
+-- type, in declaration order.
+--
+-- A player reading a prelude sees @#data Void@ and has no way to learn that
+-- @rec-Void@ and @ind-Void@ exist, let alone what they take -- the very thing two
+-- separate playtesters asked for. The list is read back from rzk after checking
+-- the prelude on its own, so it is the types rzk actually generated rather than a
+-- reconstruction here, and higher inductive types (whose eliminators carry a
+-- method per path constructor) are covered for free.
+--
+-- Total: a prelude that does not parse or does not check has nothing to show, so
+-- every failure is the empty list. This is not on the hot path -- it is computed
+-- once when a slot is entered, not per keystroke.
+generatedScope :: Text -> [(Text, Text)]
+generatedScope prelude = case safeParseModule prelude of
+  Left _  -> []
+  Right m -> case typecheckModulesWithHolesAndLemmas [] [("prelude", m)] of
+    Left _             -> []
+    Right (checked, _) ->
+      [ (tshow (declViewName d), tshow (declViewType d))
+      | (_, ds) <- declViews checked
+      , d       <- ds
+      , generated (declViewKind d)
+      ]
+  where
+    generated DeclKindDataCon{}  = True
+    generated DeclKindDataElim{} = True
+    generated _                  = False
 
 -- | The /inventory gating/ check: the prelude lemmas the editable region uses
 -- in its proof but that the level does not grant. rzk has no usage restriction,
