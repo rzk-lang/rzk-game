@@ -73,7 +73,8 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- 'main' (or a test entry point) from the result of 'loadGame', then threaded
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
-  { envGameId   :: T.Text   -- ^ namespaces the player's saved progress ('storageKey')
+  { envInfo     :: GameInfo -- ^ what the game says about itself (title, subtitle, links)
+  , envGameId   :: T.Text   -- ^ namespaces the player's saved progress ('storageKey')
   , envTitle    :: T.Text
   , envChapters :: [Chapter]
   , envSections :: [Section]
@@ -82,9 +83,10 @@ data GameEnv = GameEnv
   , envRequiresTyping :: [Bool]  -- ^ per-level "requires typing" badge, parallel to 'envLevels'
   }
 
-mkGameEnv :: T.Text -> T.Text -> [Chapter] -> GameEnv
-mkGameEnv gid title chapters =
-  GameEnv gid title chapters secs (slotsOfSections secs) levels (map requiresTyping levels)
+mkGameEnv :: GameInfo -> [Chapter] -> GameEnv
+mkGameEnv info chapters =
+  GameEnv info (gameInfoId info) (gameInfoTitle info)
+          chapters secs (slotsOfSections secs) levels (map requiresTyping levels)
   where
     secs   = chaptersSections chapters
     levels = [ puzzleLevel z | SPuzzle z <- concatMap sectionItems secs ]
@@ -95,6 +97,20 @@ mkGameEnv gid title chapters =
 requiresTypingAt :: GameEnv -> Int -> Bool
 requiresTypingAt env i = head (drop i (envRequiresTyping env))
 
+-- | The engine's own wording, used when a game overrides neither.
+defaultSubtitle, defaultCompletion :: T.Text
+defaultSubtitle   = "An interactive Rzk proof game. Fill the holes."
+defaultCompletion = "🏆 You've finished every activity. The end, for now!"
+
+-- | Name the browser tab after the game.
+--
+-- @index.html@ is engine-shipped and copied verbatim into every game's build, so
+-- its @<title>@ said "Rzk Game" for all of them. Every deployed game looked the
+-- same in a tab, a bookmark and the history. The app knows the real title, so it
+-- sets it rather than the shell being made configurable.
+setDocumentTitle :: T.Text -> IO ()
+setDocumentTitle t = let t' = ms t in [js| document.title = ${t'}; |]
+
 -- | @localStorage@ key under which @index.js@ stashes the fetched @game.json@.
 gameJsonKey :: MisoString
 gameJsonKey = "rzk-game-json"
@@ -102,15 +118,15 @@ gameJsonKey = "rzk-game-json"
 -- | Read the stashed @game.json@, build the title and chapters, and return them.
 -- Any failure (no bundle, malformed JSON, empty game) returns the built-in
 -- fallback.
-loadGame :: IO (T.Text, T.Text, [Chapter])
+loadGame :: IO (GameInfo, [Chapter])
 loadGame = do
   mjson <- getLocalStorage gameJsonKey
   case mjson of
     Just s
       | let t = fromMisoString s, not (T.null t)
-      , Right (gid, title, chapters) <- buildGame (encodeUtf8 t)
-      , not (null chapters) -> pure (gid, title, chapters)
-    _ -> pure (Content.gameId, Content.gameTitle, Content.gameChapters)
+      , Right (info, chapters) <- buildGame (encodeUtf8 t)
+      , not (null chapters) -> pure (info, chapters)
+    _ -> pure (gameInfo Content.gameId Content.gameTitle, Content.gameChapters)
 
 -- | UI state. The current position is a /slot/ index; solved puzzles, viewed
 -- prose, pre-test answers, and unlock overrides are persisted to @localStorage@.
@@ -251,8 +267,8 @@ data Action
 
 main :: IO ()
 main = do
-  (gid, title, chapters) <- loadGame
-  let env       = mkGameEnv gid title chapters
+  (info, chapters) <- loadGame
+  let env       = mkGameEnv info chapters
   importResult <- applyPendingImport env
 #ifdef INTERACTIVE
   live defaultEvents (mkApp env importResult)
@@ -275,8 +291,8 @@ foreign export javascript "hs_progresscheck" hsProgressCheck :: IO ()
 -- cannot: 'getLocalStorage' → 'buildGame' → 'checkLevel'.
 hsGameCheck :: IO ()
 hsGameCheck = do
-  (gid, title, chapters) <- loadGame
-  let env  = mkGameEnv gid title chapters
+  (info, chapters) <- loadGame
+  let env  = mkGameEnv info chapters
       secs = envSections env
       lvls = envLevels env
   putStrLn ("loaded sections: " <> show (length secs))
@@ -309,8 +325,8 @@ hsGameCheck = do
 -- wrong-version archive is rejected and changes nothing.
 hsProgressCheck :: IO ()
 hsProgressCheck = do
-  (gid, title, chapters) <- loadGame
-  let env = mkGameEnv gid title chapters
+  (info, chapters) <- loadGame
+  let env = mkGameEnv info chapters
   -- Seed a representative slice of player data.
   setLocalStorage (progressKey env) "0,2,5"
   setLocalStorage (viewedKey env)   "morphisms-intro,functions-intro"
@@ -378,7 +394,7 @@ hsSelftest :: IO ()
 hsSelftest = do
   -- The self-test exercises the full built-in game (15 levels, fixed ids and
   -- order), independent of whatever game.json a build happens to load.
-  let env          = mkGameEnv Content.gameId Content.gameTitle Content.gameChapters
+  let env          = mkGameEnv (gameInfo Content.gameId Content.gameTitle) Content.gameChapters
       gameLevels   = envLevels   env
       gameSections = envSections env
       slots        = envSlots    env
@@ -1018,6 +1034,7 @@ updateModel env = \case
     setResult (checkLevel (nthLevel env ix) t)
     io_ (removeDraft env ix)     -- drop the draft so the template stays on next load
   Init -> do
+    io_ (setDocumentTitle (envTitle env))
     io (LoadState <$> readLoadedState env)
     mix <- currentPuzzleIx
     case mix of
@@ -1219,7 +1236,7 @@ viewModel env _ m =
     [ H.header_ [ P.class_ "game" ]
         [ H.h1_ [] [ text (ms (envTitle env)) ]
         , H.p_ [ P.class_ "tagline" ]
-            [ text "An interactive Rzk proof game — fill the holes." ]
+            [ text (ms (fromMaybe defaultSubtitle (gameInfoSubtitle (envInfo env)))) ]
         ]
     , navHeader env m
     , importBanner m
@@ -1228,6 +1245,31 @@ viewModel env _ m =
             SlotProse  sid p    -> proseSlotView  env m sid p
             SlotPuzzle sid ix z -> puzzleSlotView env m sid ix z
         )
+    , gameFooter env
+    ]
+
+-- | A link to one item's own source file, when the game gives an @edit-url@
+-- template. This is what makes "the author takes pull requests" actionable: it
+-- lands the reader on the file to change, rather than on the repository root.
+editLink :: GameEnv -> T.Text -> View Model Action
+editLink env itemId = case editLinkFor (envInfo env) itemId of
+  Nothing  -> text ""
+  Just url -> H.p_ [ P.class_ "edit-link" ]
+    [ H.a_ [ P.href_ (ms url), P.target_ "_blank" ]
+        [ text "✎ Suggest a fix for this page" ] ]
+
+-- | The game's own links, at the foot of the page.
+--
+-- Content only. A checker crash is an engine or an rzk bug, not the author's to
+-- receive, so the crash panel keeps its own hardcoded tracker and the two are
+-- deliberately kept apart on the page.
+gameFooter :: GameEnv -> View Model Action
+gameFooter env = case gameInfoRepository (envInfo env) of
+  Nothing   -> text ""
+  Just repo -> H.footer_ [ P.class_ "game-footer" ]
+    [ text "Found something to fix in this game? "
+    , H.a_ [ P.href_ (ms repo), P.target_ "_blank" ] [ text "Its source is here" ]
+    , text "."
     ]
 
 -- | A dismissible banner reporting the result of an import applied at the last
@@ -1502,6 +1544,7 @@ proseSlotView env m sid p =
            , key_ (ms ("prose-" <> show (_slotIx m)))
            , onCreatedWith (InitProse (ms (proseText p)))
            ] []
+  , editLink env (proseId p)
   , H.p_ [ P.class_ "viewed-note" ]
       [ text (if isViewed then "✓ Read" else "") ]
   , sectionDoneBadge env m sid
@@ -1533,6 +1576,7 @@ puzzleSlotView env m sid ix z =
            , key_ (ms ("intro-" <> show (_slotIx m)))
            , onCreatedWith (InitProse (ms (levelIntro lvl)))
            ] []
+  , editLink env (puzzleId z)
   , H.h3_ [] [ text "Goal" ]
   , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
   , preludeView m lvl
@@ -2069,9 +2113,13 @@ advanceView env m accepted
                               [ text (ms ("★ Extra credit: " <> slotLabel (slotAt env k))) ]
                           | Just k <- [skippedExtra env m], k /= j ] )
         Nothing -> H.div_ [ P.class_ "advance" ]
-                     [ H.p_ [ P.class_ "all-done" ]
-                         [ text "🏆 You've finished every activity. The end — for now!" ] ]
+                     [ H.div_ [ P.class_ "all-done prose"
+                              , key_ (ms ("all-done" :: T.Text))
+                              , onCreatedWith (InitProse (ms completionText)) ] [] ]
   | otherwise = text ""
+  where
+    -- Rendered as prose, so a game can point at whatever comes next with a link.
+    completionText = fromMaybe defaultCompletion (gameInfoCompletion (envInfo env))
 
 -- | The slot immediately after the current one, when it is an unsolved starred
 -- extra: the one the onward step passes over. 'Nothing' when the next slot is

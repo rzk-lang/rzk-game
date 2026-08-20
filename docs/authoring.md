@@ -59,6 +59,18 @@ flat game is just one untitled chapter. A section has an `id`, a `title`, and
 ordered `items`. Each item references a file by path, tagged `prose:` or
 `puzzle:`.
 
+Four more fields are optional, and each replaces something the engine would
+otherwise say for itself. `subtitle` is the line under the title. `completion` is
+what a player reads once every required activity is done, rendered as Markdown so
+a game can point at whatever comes next. `repository` says where the content
+lives, for a reader with a fix to suggest. `edit-url` is a template containing
+`{file}`, and setting it gives every page a link to its own source file, which is
+what makes an offer of pull requests actionable.
+
+`repository` and `edit-url` are about content. A checker crash is an engine or an
+rzk bug, and the crash panel reports it to the engine's own tracker, which is not
+something a game configures.
+
 Set the game's `id`. It namespaces the player's saved progress. Games published
 to GitHub Pages share one origin and differ only by path, while `localStorage` is
 per-origin, so without distinct ids two games share one set of keys and overwrite
@@ -69,6 +81,10 @@ with it and the saved progress is orphaned.
 ```yaml
 id: my-game        # namespaces saved progress, keep it stable
 title: My game
+subtitle: A short line under the title.
+completion: You finished. [Try the next game](https://example.org/next/).
+repository: https://github.com/me/my-game
+edit-url: https://github.com/me/my-game/edit/main/game/{file}
 chapters:
 - sections:
   - id: getting-started
