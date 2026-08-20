@@ -29,18 +29,19 @@ packages: .
 -- error (#321) — the built-in game uses neither. Still builds under GHC 9.8+
 -- (the wasm toolchain provides 9.12).
 --
--- Now pinned past that release, to `develop`, for four things the game shows
--- directly. A lemma whose result type is a motive application is offered as a
--- hole candidate (#338), so a level can teach `ind-path` in place of the
--- built-in `idJ`. A type error is reported where the offending sub-term is
--- rather than at the enclosing `#def`, which is what the editor's squiggle
--- follows. Checking continues past a declaration that fails, so one broken
--- definition no longer hides the rest. And the formatter no longer eats a
--- file's final newline.
+-- Now pinned to the v0.11.2 release, for four things the game shows directly.
+-- A lemma whose result type is a motive application is offered as a hole
+-- candidate (#338), so a level can teach `ind-path` in place of the built-in
+-- `idJ`. A type error is reported where the offending sub-term is rather than
+-- at the enclosing `#def`, which is what the editor's squiggle follows.
+-- Checking continues past a declaration that fails, so one broken definition
+-- no longer hides the rest. And the formatter no longer eats a file's final
+-- newline.
+
 source-repository-package
   type: git
   location: https://github.com/rzk-lang/rzk.git
-  tag: dfc1fe6dc220917c619e577a9b7bdfd2c7d5372e
+  tag: 8594032f32006fde23be2368e73edbc506605d41
   subdir: rzk
 
 -- miso: GHC WASM backend frontend framework.
