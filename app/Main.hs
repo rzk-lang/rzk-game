@@ -130,7 +130,7 @@ data Model = Model
   , _dirty      :: Bool                      -- ^ editable changed since the shown result was checked
   , _showMoves  :: Bool                      -- ^ global player preference: show the Moves panel at all
   , _movesRevealed :: Bool                   -- ^ obscured moves revealed for the focused hole (per-session)
-  , _scope      :: [(T.Text, T.Text)]        -- ^ names the slot's prelude generates but does not write ('generatedScope')
+  , _preludeSrc :: [(T.Text, Bool)]          -- ^ the slot's prelude by line, each flagged generated ('annotatedPrelude')
   , _caret      :: Maybe Int                 -- ^ caret offset, when the last edit was a single insertion
   } deriving (Eq)
 
@@ -158,8 +158,8 @@ unlocked = lens _unlocked $ \m v -> m { _unlocked = v }
 history :: Lens Model [MisoString]
 history = lens _history $ \m v -> m { _history = v }
 
-scope :: Lens Model [(T.Text, T.Text)]
-scope = lens _scope $ \m v -> m { _scope = v }
+preludeSrc :: Lens Model [(T.Text, Bool)]
+preludeSrc = lens _preludeSrc $ \m v -> m { _preludeSrc = v }
 
 caret :: Lens Model (Maybe Int)
 caret = lens _caret $ \m v -> m { _caret = v }
@@ -616,15 +616,15 @@ initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
   (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False [] Nothing)
 
--- | The names a slot's prelude generates but does not write ('generatedScope'),
--- empty for a prose slot. Both ways of entering a slot go through this, so the
--- pure path ('enterSlotPure', used at startup) and the effectful one
--- ('gotoSlot', used for every later navigation) cannot disagree about it.
+-- | A slot's prelude by line, each flagged generated ('annotatedPrelude'), empty
+-- for a prose slot. Both ways of entering a slot go through this, so the pure
+-- path ('enterSlotPure', used at startup) and the effectful one ('gotoSlot',
+-- used for every later navigation) cannot disagree about it.
 --
 -- Computed on entry rather than in the view, which re-runs on every keystroke.
-scopeOfSlot :: Slot -> [(T.Text, T.Text)]
-scopeOfSlot (SlotProse _ _)    = []
-scopeOfSlot (SlotPuzzle _ _ z) = generatedScope (levelPrelude (puzzleLevel z))
+preludeOfSlot :: Slot -> [(T.Text, Bool)]
+preludeOfSlot (SlotProse _ _)    = []
+preludeOfSlot (SlotPuzzle _ _ z) = annotatedPrelude (levelPrelude (puzzleLevel z))
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -633,14 +633,14 @@ enterSlotPure :: GameEnv -> Int -> Model -> Model
 enterSlotPure env i m = case slotAt env i of
   SlotProse _ _ ->
     m { _slotIx = i, _editable = "", _result = NotChecked, _history = []
-      , _hintsShown = 0, _dirty = False, _movesRevealed = False, _scope = []
+      , _hintsShown = 0, _dirty = False, _movesRevealed = False, _preludeSrc = []
       , _caret = Nothing }
   SlotPuzzle _ _ z ->
     let t = levelTemplate (puzzleLevel z)
     in m { _slotIx = i, _editable = ms t
          , _result = checkLevel (puzzleLevel z) t, _history = []
          , _hintsShown = 0, _dirty = False, _movesRevealed = False
-         , _scope = scopeOfSlot (slotAt env i)
+         , _preludeSrc = preludeOfSlot (slotAt env i)
          , _caret = Nothing }
 
 -- localStorage keys.
@@ -1063,7 +1063,7 @@ updateModel env = \case
       movesRevealed .= False   -- and with any obscured moves hidden again
       mapOpen       .= False   -- collapse the map after a jump, back to content
       io_ (setHash (slotAnchorAt env i))
-      scope .= scopeOfSlot (slotAt env i)
+      preludeSrc .= preludeOfSlot (slotAt env i)
       case slotAt env i of
         SlotProse _ p -> do
           putEditable ""
@@ -1576,42 +1576,48 @@ sectionDoneBadge env m sid
   where
     title = maybe "" sectionTitle (find ((== sid) . sectionId) (envSections env))
 
+-- | Put a literal newline back between per-line spans (none after the last), so
+-- the rendered text reproduces the source exactly. Shared by the editor's
+-- highlight layer and the prelude panel, both of which wrap each line in its own
+-- element to carry a per-line class.
+intersperseNewlines :: [View Model Action] -> [View Model Action]
+intersperseNewlines = \case
+  []       -> []
+  [v]      -> [v]
+  (v : vs) -> v : text "\n" : intersperseNewlines vs
+
 -- | The level's read-only prelude. It is reference material, not the focus, so
 -- it is collapsed by default; opening it reveals the given definitions,
 -- syntax-highlighted with the same tokeniser as the editor.
 --
--- Under the source, the names the prelude /generates/ but does not write: a
--- @#data@ declaration silently brings its constructors and eliminators into
--- scope, and reading the prelude gave no hint that @rec-Void@ and @ind-Void@
--- exist, let alone what they take. The list comes from 'generatedScope' via the
--- model, so it is what rzk generated rather than a guess.
+-- What a @#data@ declaration /generates/ is spelled out in place, as rzk's own
+-- @eliminate with@ / @compute with@ re-ascription clauses (see
+-- 'annotatedPrelude'), so a player reading @#data Void@ can see that
+-- @rec-Void@ exists and what it takes. Those lines are dimmed, since they are
+-- rzk's words rather than the author's, and the source is otherwise verbatim.
 preludeView :: Model -> Level -> View Model Action
 preludeView m lvl =
   H.details_ [ P.class_ "prelude-wrap" ]
-    ( [ H.summary_ [] [ text "Prelude (given)" ]
-      , H.pre_ [ P.class_ "prelude" ]
-          [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
-          | Tok cls txt <- highlight (levelPrelude lvl)
-          ]
-      ]
-      <> [ generatedView (m ^. scope) | not (null (m ^. scope)) ] )
-
--- | The generated-scope list: one row per name, its type rendered with the
--- editor's tokeniser so it reads like the prelude above it.
-generatedView :: [(T.Text, T.Text)] -> View Model Action
-generatedView entries =
-  H.div_ [ P.class_ "generated" ]
-    ( [ H.p_ [ P.class_ "generated-head" ]
-          [ text "Also in scope (generated by #data):" ] ]
-      <> [ H.pre_ [ P.class_ "prelude generated-entry" ]
-             ( [ H.span_ [ P.class_ "tok-plain generated-name" ] [ text (ms n) ]
-               , H.span_ [ P.class_ "tok-op" ] [ text " : " ]
-               ]
-               <> [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
-                  | Tok cls txt <- highlight ty
-                  ] )
-         | (n, ty) <- entries
-         ] )
+    [ H.summary_ [] [ text "Prelude (given)" ]
+    , H.pre_ [ P.class_ "prelude" ]
+        (intersperseNewlines [ lineSpan gen toks | (gen, toks) <- lns ])
+    ]
+  where
+    -- Fall back to the raw source before the slot's lines have been computed
+    -- (a puzzle reached without going through a slot entry, e.g. the very first
+    -- render), so the panel is never empty.
+    annotated = case m ^. preludeSrc of
+      [] -> [ (l, False) | l <- T.splitOn "\n" (levelPrelude lvl) ]
+      ls -> ls
+    -- Tokenise the assembled text in one go, so bracket depth threads across
+    -- lines exactly as it does in the editor.
+    lns = zip (map snd annotated)
+              (highlightLines (T.intercalate "\n" (map fst annotated)))
+    lineSpan gen toks =
+      H.span_ [ P.class_ (if gen then "prelude-gen" else "") ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- toks
+        ]
 
 -- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
 -- The @<pre>@ is the layer in normal flow, so it sizes the box, and the textarea
@@ -1652,12 +1658,6 @@ editorView code errLines =
         ]
     lineCls :: Int -> T.Text
     lineCls i = "hl-line" <> if Set.member i errSet then " hl-errline" else ""
-    -- Put a literal newline back between the per-line spans (none after the last),
-    -- so the rendered text reproduces the source exactly.
-    intersperseNewlines = \case
-      []       -> []
-      [v]      -> [v]
-      (v : vs) -> v : text "\n" : intersperseNewlines vs
 
 -- | The Unicode input method's hint row: while an abbreviation is being typed,
 -- the abbreviations it could still become, with what each produces.
