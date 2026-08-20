@@ -616,6 +616,16 @@ initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
   (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False [] Nothing)
 
+-- | The names a slot's prelude generates but does not write ('generatedScope'),
+-- empty for a prose slot. Both ways of entering a slot go through this, so the
+-- pure path ('enterSlotPure', used at startup) and the effectful one
+-- ('gotoSlot', used for every later navigation) cannot disagree about it.
+--
+-- Computed on entry rather than in the view, which re-runs on every keystroke.
+scopeOfSlot :: Slot -> [(T.Text, T.Text)]
+scopeOfSlot (SlotProse _ _)    = []
+scopeOfSlot (SlotPuzzle _ _ z) = generatedScope (levelPrelude (puzzleLevel z))
+
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
 -- manual Check); a prose slot clears the editor. The undo history is reset.
@@ -630,8 +640,7 @@ enterSlotPure env i m = case slotAt env i of
     in m { _slotIx = i, _editable = ms t
          , _result = checkLevel (puzzleLevel z) t, _history = []
          , _hintsShown = 0, _dirty = False, _movesRevealed = False
-         -- Computed once here rather than in the view, which re-runs per keystroke.
-         , _scope = generatedScope (levelPrelude (puzzleLevel z))
+         , _scope = scopeOfSlot (slotAt env i)
          , _caret = Nothing }
 
 -- localStorage keys.
@@ -1054,6 +1063,7 @@ updateModel env = \case
       movesRevealed .= False   -- and with any obscured moves hidden again
       mapOpen       .= False   -- collapse the map after a jump, back to content
       io_ (setHash (slotAnchorAt env i))
+      scope .= scopeOfSlot (slotAt env i)
       case slotAt env i of
         SlotProse _ p -> do
           putEditable ""
