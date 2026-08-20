@@ -33,7 +33,7 @@ import           Data.Text.Encoding   (encodeUtf8)
 import qualified Data.Text.IO         as TIO
 import qualified Data.Yaml            as Y
 import           System.Directory     (createDirectoryIfMissing)
-import           System.Environment   (getArgs)
+import           System.Environment   (getArgs, lookupEnv)
 import           System.Exit          (die)
 import           System.FilePath      (takeDirectory, (</>))
 
@@ -56,7 +56,12 @@ main = do
 
   files <- traverse (readLevelFile gameDir) (refMap (fileRefs config))
 
-  let bundle = A.object [ "config" A..= config, "files" A..= files ]
+  -- Where this bundle's content came from, when the caller says. CI knows the
+  -- commit and the engine does not, so it is stamped in rather than derived, and
+  -- a local bundle simply carries nothing.
+  msource <- lookupEnv "RZK_GAME_SOURCE"
+  let source = [ "source" A..= s | Just s <- [msource], not (null s) ]
+      bundle = A.object ([ "config" A..= config, "files" A..= files ] <> source)
   createDirectoryIfMissing True (takeDirectory outJson)
   BL.writeFile outJson (A.encode bundle)
   putStrLn ("Wrote " <> outJson <> " ("

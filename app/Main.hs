@@ -37,6 +37,9 @@ import qualified Data.Text          as T
 import           Data.Text.Encoding (encodeUtf8)
 import           Text.Read          (readMaybe)
 
+import           Paths_rzk_game     (version)
+import           Data.Version       (showVersion)
+
 import qualified RzkGame.Content    as Content
 import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      composeWitnessLevel, constTriangleLevel,
@@ -96,6 +99,14 @@ mkGameEnv info chapters =
 -- so the (eventually expensive) classification runs at most once per level.
 requiresTypingAt :: GameEnv -> Int -> Bool
 requiresTypingAt env i = head (drop i (envRequiresTyping env))
+
+-- | Which engine build this is, from the package version.
+--
+-- Shown in the footer and stamped into a crash report. A report that cannot be
+-- tied to a build is much harder to act on, and the version also pins which rzk
+-- the engine was built against, since the changelog records that per release.
+engineVersion :: T.Text
+engineVersion = T.pack (showVersion version)
 
 -- | The engine's own wording, used when a game overrides neither.
 defaultSubtitle, defaultCompletion :: T.Text
@@ -1264,13 +1275,21 @@ editLink env itemId = case editLinkFor (envInfo env) itemId of
 -- receive, so the crash panel keeps its own hardcoded tracker and the two are
 -- deliberately kept apart on the page.
 gameFooter :: GameEnv -> View Model Action
-gameFooter env = case gameInfoRepository (envInfo env) of
-  Nothing   -> text ""
-  Just repo -> H.footer_ [ P.class_ "game-footer" ]
-    [ text "Found something to fix in this game? "
-    , H.a_ [ P.href_ (ms repo), P.target_ "_blank" ] [ text "Its source is here" ]
-    , text "."
-    ]
+gameFooter env = H.footer_ [ P.class_ "game-footer" ]
+  ( contentLink <> [ H.span_ [ P.class_ "build-line" ] [ text (ms buildLine) ] ] )
+  where
+    contentLink = case gameInfoRepository (envInfo env) of
+      Nothing   -> []
+      Just repo ->
+        [ text "Found something to fix in this game? "
+        , H.a_ [ P.href_ (ms repo), P.target_ "_blank" ] [ text "Its source is here" ]
+        , text ". "
+        ]
+    -- Which build this is. The engine version pins which rzk it was built
+    -- against, since the changelog records that per release, so naming rzk here
+    -- as well would only be a second thing to keep in step.
+    buildLine = "rzk-game " <> engineVersion
+      <> maybe "" (\src -> " · content " <> T.take 7 src) (gameInfoSource (envInfo env))
 
 -- | A dismissible banner reporting the result of an import applied at the last
 -- reload (see 'applyPendingImport'): how many items were restored, or why the
@@ -1616,7 +1635,7 @@ puzzleSlotView env m sid ix z =
              -- result shows normally, with any gate notice below it.
              , if m ^. result == Solved && levelGated lvl
                   && not (null gate && null forbidden)
-                 then text "" else resultView lvl (m ^. editable) (m ^. result)
+                 then text "" else resultView env lvl (m ^. editable) (m ^. result)
              , gateView lvl (m ^. result) gate
              , forbiddenGateView lvl forbidden
              , hintsView m lvl
@@ -2181,9 +2200,13 @@ slotLabel (SlotPuzzle _ ix z) = tshow (ix + 1) <> ". " <> levelTitle (puzzleLeve
 -- | A ready-to-paste bug report for a checker crash: the level's prelude, the
 -- player's current definition, and the error. The "Copy issue report" button in
 -- the crash panel puts this on the clipboard, GitHub-Markdown formatted.
-crashReport :: Level -> T.Text -> T.Text -> T.Text
-crashReport lvl editable err = T.unlines
+crashReport :: GameEnv -> Level -> T.Text -> T.Text -> T.Text
+crashReport env lvl editable err = T.unlines
   [ "The rzk typechecker crashed in rzk-game."
+  , ""
+  , "**Build:** rzk-game " <> engineVersion
+      <> ", game " <> gameInfoId (envInfo env)
+      <> maybe "" (" at " <>) (gameInfoSource (envInfo env))
   , ""
   , "**Prelude:**"
   , "```rzk"
@@ -2228,8 +2251,8 @@ checkStatusView m = H.div_ [] (parenNote <> staleNote)
     message u x = "● Unbalanced brackets: " <> T.intercalate " and " (parts u x) <> "."
     parts u x = [ tshow u <> " unclosed (" | u > 0 ] <> [ tshow x <> " stray )" | x > 0 ]
 
-resultView :: Level -> MisoString -> CheckResult -> View Model Action
-resultView lvl editable = \case
+resultView :: GameEnv -> Level -> MisoString -> CheckResult -> View Model Action
+resultView env lvl editable = \case
   NotChecked     -> H.pre_ [] [ text "(press Check)" ]
   ParseError e _ -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
   -- The rzk type-error formatter is verbose (a "when typechecking …" trace per
@@ -2262,7 +2285,7 @@ resultView lvl editable = \case
       [ H.p_ [] [ text "⚠ The checker hit a bug on this input, not necessarily a mistake in your proof." ]
       , H.p_ []
           [ H.button_ [ P.class_ "copy-report"
-                      , H.onClick (CopyText (ms (crashReport lvl (fromMisoString editable) e)))
+                      , H.onClick (CopyText (ms (crashReport env lvl (fromMisoString editable) e)))
                       , P.title_ "Copy a ready-to-paste issue report (prelude, your definition, and the error)" ]
               [ text "📋 Copy issue report" ]
           , text " then "
