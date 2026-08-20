@@ -25,6 +25,7 @@ import           Miso.FFI.QQ        (js)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
+import           Control.Applicative ((<|>))
 import           Control.Exception  (SomeException, evaluate, try)
 import           Data.List          (find, sort)
 import           Data.Map.Strict    (Map)
@@ -46,6 +47,8 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
                                      parenBalance, tokClassName)
+import           RzkGame.Input      (applyAbbrev, completions, insertionPoint,
+                                     pendingAbbrev)
 import           RzkGame.Level
 import           RzkGame.Format     (formatEditable)
 import           RzkGame.Loader     (buildGame)
@@ -128,6 +131,7 @@ data Model = Model
   , _showMoves  :: Bool                      -- ^ global player preference: show the Moves panel at all
   , _movesRevealed :: Bool                   -- ^ obscured moves revealed for the focused hole (per-session)
   , _scope      :: [(T.Text, T.Text)]        -- ^ names the slot's prelude generates but does not write ('generatedScope')
+  , _caret      :: Maybe Int                 -- ^ caret offset, when the last edit was a single insertion
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -156,6 +160,9 @@ history = lens _history $ \m v -> m { _history = v }
 
 scope :: Lens Model [(T.Text, T.Text)]
 scope = lens _scope $ \m v -> m { _scope = v }
+
+caret :: Lens Model (Maybe Int)
+caret = lens _caret $ \m v -> m { _caret = v }
 
 mapOpen :: Lens Model Bool
 mapOpen = lens _mapOpen $ \m v -> m { _mapOpen = v }
@@ -599,9 +606,15 @@ setHash a = let a' = ms a in [js| window.location.hash = ${a'}; |]
 copyToClipboard :: MisoString -> IO ()
 copyToClipboard t = [js| navigator.clipboard.writeText(${t}); |]
 
+-- | Move the editor's caret to an offset, once miso has patched the new value in
+-- (see @caret.js@). Needed only after the input method rewrites the text under
+-- the player: an ordinary keystroke leaves the caret alone.
+setEditorCaret :: Int -> IO ()
+setEditorCaret n = let n' = ms (show n) in [js| setEditorCaret(${n'}); |]
+
 initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False [])
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False [] Nothing)
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -610,14 +623,16 @@ enterSlotPure :: GameEnv -> Int -> Model -> Model
 enterSlotPure env i m = case slotAt env i of
   SlotProse _ _ ->
     m { _slotIx = i, _editable = "", _result = NotChecked, _history = []
-      , _hintsShown = 0, _dirty = False, _movesRevealed = False, _scope = [] }
+      , _hintsShown = 0, _dirty = False, _movesRevealed = False, _scope = []
+      , _caret = Nothing }
   SlotPuzzle _ _ z ->
     let t = levelTemplate (puzzleLevel z)
     in m { _slotIx = i, _editable = ms t
          , _result = checkLevel (puzzleLevel z) t, _history = []
          , _hintsShown = 0, _dirty = False, _movesRevealed = False
          -- Computed once here rather than in the view, which re-runs per keystroke.
-         , _scope = generatedScope (levelPrelude (puzzleLevel z)) }
+         , _scope = generatedScope (levelPrelude (puzzleLevel z))
+         , _caret = Nothing }
 
 -- localStorage keys.
 progressKey, viewedKey, pretestKey, unlockedKey :: MisoString
@@ -836,12 +851,26 @@ applyPendingImport env = do
 
 updateModel :: GameEnv -> Action -> Effect parent props Model Action
 updateModel env = \case
+  -- Typing. The Unicode input method runs here: the input event carries only the
+  -- new value, so the caret is recovered by diffing against the value the model
+  -- held ('insertionPoint'), and an abbreviation that fires rewrites the text
+  -- before it is stored. A rewrite moves the caret, and the browser would leave
+  -- it at the end of the re-rendered value, so it is put back explicitly.
   SetEditable s -> do
-    editable .= s
+    before <- use editable
+    let typed = fromMisoString s
+        pos   = insertionPoint (fromMisoString before) typed
+        fired = pos >>= applyAbbrev typed
+        s'    = maybe s (ms . fst) fired
+    editable .= s'
+    caret    .= (fmap snd fired <|> pos)
+    case fired of
+      Just (_, c) -> io_ (setEditorCaret c)
+      Nothing     -> pure ()
     dirty .= True            -- typed since the last check: the shown result is stale
     mix <- currentPuzzleIx
     case mix of
-      Just ix -> io_ (saveDraft env ix s)
+      Just ix -> io_ (saveDraft env ix s')
       Nothing -> pure ()
   ToggleMap -> mapOpen %= not
   SelectSlot i -> gotoSlot i
@@ -1403,6 +1432,7 @@ puzzleSlotView env m sid ix z =
           pretestControls env m z
           <> [ H.h3_ [] [ text "Your proof" ]
              , editorView (m ^. editable) (resultErrorLines (m ^. result))
+             , abbrevView m
              , H.h3_ [] [ text "Moves" ]
              , movesView lvl m
              , inventoryView lvl
@@ -1608,6 +1638,36 @@ editorView code errLines =
       []       -> []
       [v]      -> [v]
       (v : vs) -> v : text "\n" : intersperseNewlines vs
+
+-- | The Unicode input method's hint row: while an abbreviation is being typed,
+-- the abbreviations it could still become, with what each produces.
+--
+-- Rzk's notation has no ASCII spelling, so a player who types rather than taps
+-- has to know it is here at all; showing the table as it is used is how they
+-- find out. Rows are read-only — clicking one would take the focus (and the
+-- caret) out of the editor, which is the opposite of helpful mid-word.
+abbrevView :: Model -> View Model Action
+abbrevView m = case m ^. caret >>= pendingAbbrev (fromMisoString (m ^. editable)) of
+  Nothing  -> text ""
+  Just key -> case take abbrevRowLimit (completions key) of
+    []      -> text ""
+    matches ->
+      H.div_ [ P.class_ "abbrevs" ]
+        ( [ H.span_ [ P.class_ "abbrevs-head" ] [ text "\\" , text (ms key) ] ]
+          <> [ H.span_ [ P.class_ "abbrev" ]
+                 [ H.span_ [ P.class_ "abbrev-key" ] [ text (ms ("\\" <> k)) ]
+                 , H.span_ [ P.class_ "abbrev-ch" ] [ text (ms ch) ]
+                 ]
+             | (k, ch) <- matches
+             ]
+          <> [ H.span_ [ P.class_ "abbrevs-more" ] [ text "…" ]
+             | length (completions key) > abbrevRowLimit ] )
+
+-- | How many abbreviations the hint row shows before trailing off. A bare
+-- backslash matches the whole table, which is a palette worth glancing at but
+-- not worth unrolling.
+abbrevRowLimit :: Int
+abbrevRowLimit = 12
 
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is

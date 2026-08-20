@@ -13,6 +13,7 @@
   <script src="prose.js"></script>
   <!-- Progress export/import helpers (download, pickImport); see Main.hs. -->
   <script src="download.js"></script>
+  <script src="caret.js"></script>
   <style>
     body { font-family: -apple-system, system-ui, sans-serif;
            max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
@@ -98,6 +99,16 @@
     .tok-paren-bad { color: #cf222e; font-weight: 700; background: #ffebe9;
                      border-radius: 3px; }
     .paren-note  { margin: .3rem 0; font-size: .85rem; color: #cf222e; }
+    /* The Unicode input method's hint row, shown under the editor while an
+       abbreviation is open. Monospace, so the keys line up with the editor. */
+    .abbrevs { margin: .25rem 0 .4rem; display: flex; flex-wrap: wrap;
+               gap: .1rem .5rem; align-items: baseline;
+               font-family: ui-monospace, monospace; font-size: .8rem; }
+    .abbrevs-head { font-weight: 700; color: #8250df; margin-right: .2rem; }
+    .abbrevs-more { color: #999; }
+    .abbrev { color: #666; }
+    .abbrev-key { color: #666; }
+    .abbrev-ch  { margin-left: .25rem; color: #222; font-size: .95rem; }
     .tok-kw      { color: #8250df; font-weight: 600; }
     .tok-hole    { color: #fff; background: #d6336c; border-radius: 3px; }
     .tok-comment { color: #6a737d; font-style: italic; }
