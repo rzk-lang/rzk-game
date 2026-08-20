@@ -123,9 +123,13 @@
         font-weight: 700; }
     .progress { margin: 0 0 .8rem; font-size: .85rem; color: #777; }
     .progress.done { color: #2a7a2a; font-weight: 600; }
-    .advance { margin: .5rem 0; }
+    .advance { margin: .5rem 0; display: flex; flex-wrap: wrap; gap: .4rem; }
     .advance button { background: #dfd; border: 1px solid #7c7; border-radius: 6px;
                       cursor: pointer; }
+    /* The optional step, when the onward step skips over a starred extra: the
+       amber of the extras counter elsewhere, so the star reads as the same thing. */
+    .advance button.advance-extra { background: #fdf3d6; border-color: #c79a00;
+                                    color: #6b5200; }
     .all-done { margin: .5rem 0; padding: .6rem; background: #dff5df;
                 border: 1px solid #7c7; border-radius: 6px; font-weight: 600;
                 color: #285028; }
@@ -173,6 +177,7 @@
     .buttons button:disabled:hover { background: #fff; }
     .levels button:hover { border-color: #999; }
     .advance button:hover { background: #cfe9cf; }
+    .advance button.advance-extra:hover { background: #f7e7b8; }
     /* Linear prev / current / next navigation footer. */
     .nav { display: flex; align-items: center; justify-content: space-between;
            gap: .5rem; margin: 1.2rem 0 .3rem; padding-top: .6rem;

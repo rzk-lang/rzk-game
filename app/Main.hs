@@ -1795,17 +1795,39 @@ hintsView m lvl
 -- | When the level is solved, offer a step onward: the next /incomplete/ slot
 -- (an unviewed prose or an unsolved required puzzle), searching forward and
 -- wrapping past the end. A closing line shows once everything is done.
+--
+-- A starred extra is not incomplete for this purpose, so the onward step skips
+-- over one — which reads as a jump, since the level right after this one is
+-- silently passed by. When that is what happens, the extra is offered beside the
+-- main step as a second button, so both places to go are visible and the player
+-- chooses. ('nextIncomplete' can also land /on/ the extra by wrapping around once
+-- everything required is done; the guard keeps that from being offered twice.)
 advanceView :: GameEnv -> Model -> Bool -> View Model Action
 advanceView env m accepted
   | accepted =
       case nextIncomplete env m of
         Just j  -> H.div_ [ P.class_ "advance" ]
-                     [ H.button_ [ H.onClick (SelectSlot j) ]
-                         [ text (ms ("Next: " <> slotLabel (slotAt env j))) ] ]
+                     ( [ H.button_ [ H.onClick (SelectSlot j) ]
+                           [ text (ms ("Next: " <> slotLabel (slotAt env j))) ] ]
+                       <> [ H.button_ [ P.class_ "advance-extra", H.onClick (SelectSlot k) ]
+                              [ text (ms ("★ Extra credit: " <> slotLabel (slotAt env k))) ]
+                          | Just k <- [skippedExtra env m], k /= j ] )
         Nothing -> H.div_ [ P.class_ "advance" ]
                      [ H.p_ [ P.class_ "all-done" ]
                          [ text "🏆 You've finished every activity. The end — for now!" ] ]
   | otherwise = text ""
+
+-- | The slot immediately after the current one, when it is an unsolved starred
+-- extra: the one the onward step passes over. 'Nothing' when the next slot is
+-- required, already done, or there is no next slot.
+skippedExtra :: GameEnv -> Model -> Maybe Int
+skippedExtra env m
+  | k < length (envSlots env)
+  , let s = slotAt env k
+  , slotExtra s
+  , not (slotDone (m ^. solved) (m ^. viewed) (m ^. pretest) s) = Just k
+  | otherwise = Nothing
+  where k = _slotIx m + 1
 
 -- | The next incomplete /required/ slot, searching forward from the current one
 -- and wrapping past the end. 'Nothing' when everything required is done.
