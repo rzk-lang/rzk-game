@@ -21,6 +21,7 @@ library
     RzkGame.Section
     RzkGame.Content
     RzkGame.Highlight
+    RzkGame.Input
     RzkGame.Spec
     RzkGame.Loader
     RzkGame.Save

@@ -25,6 +25,7 @@ import           Miso.FFI.QQ        (js)
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
+import           Control.Applicative ((<|>))
 import           Control.Exception  (SomeException, evaluate, try)
 import           Data.List          (find, sort)
 import           Data.Map.Strict    (Map)
@@ -45,7 +46,9 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      unfoldingSquareLevel, witnessAssocLevel,
                                      witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), highlight, highlightLines,
-                                     tokClassName)
+                                     parenBalance, tokClassName)
+import           RzkGame.Input      (applyAbbrev, completions, insertionPoint,
+                                     pendingAbbrev)
 import           RzkGame.Level
 import           RzkGame.Format     (formatEditable)
 import           RzkGame.Loader     (buildGame)
@@ -127,6 +130,8 @@ data Model = Model
   , _dirty      :: Bool                      -- ^ editable changed since the shown result was checked
   , _showMoves  :: Bool                      -- ^ global player preference: show the Moves panel at all
   , _movesRevealed :: Bool                   -- ^ obscured moves revealed for the focused hole (per-session)
+  , _preludeSrc :: [(T.Text, Bool)]          -- ^ the slot's prelude by line, each flagged generated ('annotatedPrelude')
+  , _caret      :: Maybe Int                 -- ^ caret offset, when the last edit was a single insertion
   } deriving (Eq)
 
 slotIx :: Lens Model Int
@@ -152,6 +157,12 @@ unlocked = lens _unlocked $ \m v -> m { _unlocked = v }
 
 history :: Lens Model [MisoString]
 history = lens _history $ \m v -> m { _history = v }
+
+preludeSrc :: Lens Model [(T.Text, Bool)]
+preludeSrc = lens _preludeSrc $ \m v -> m { _preludeSrc = v }
+
+caret :: Lens Model (Maybe Int)
+caret = lens _caret $ \m v -> m { _caret = v }
 
 mapOpen :: Lens Model Bool
 mapOpen = lens _mapOpen $ \m v -> m { _mapOpen = v }
@@ -595,9 +606,25 @@ setHash a = let a' = ms a in [js| window.location.hash = ${a'}; |]
 copyToClipboard :: MisoString -> IO ()
 copyToClipboard t = [js| navigator.clipboard.writeText(${t}); |]
 
+-- | Move the editor's caret to an offset, once miso has patched the new value in
+-- (see @caret.js@). Needed only after the input method rewrites the text under
+-- the player: an ordinary keystroke leaves the caret alone.
+setEditorCaret :: Int -> IO ()
+setEditorCaret n = let n' = ms (show n) in [js| setEditorCaret(${n'}); |]
+
 initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
-  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False)
+  (Model 0 "" NotChecked Set.empty Set.empty Map.empty Set.empty [] False False importResult False 0 False True False [] Nothing)
+
+-- | A slot's prelude by line, each flagged generated ('annotatedPrelude'), empty
+-- for a prose slot. Both ways of entering a slot go through this, so the pure
+-- path ('enterSlotPure', used at startup) and the effectful one ('gotoSlot',
+-- used for every later navigation) cannot disagree about it.
+--
+-- Computed on entry rather than in the view, which re-runs on every keystroke.
+preludeOfSlot :: Slot -> [(T.Text, Bool)]
+preludeOfSlot (SlotProse _ _)    = []
+preludeOfSlot (SlotPuzzle _ _ z) = annotatedPrelude (levelPrelude (puzzleLevel z))
 
 -- | Set up the model's editor for a slot, without IO. A puzzle slot loads its
 -- template and checks it (so the focused hole and its moves show without a first
@@ -606,12 +633,15 @@ enterSlotPure :: GameEnv -> Int -> Model -> Model
 enterSlotPure env i m = case slotAt env i of
   SlotProse _ _ ->
     m { _slotIx = i, _editable = "", _result = NotChecked, _history = []
-      , _hintsShown = 0, _dirty = False, _movesRevealed = False }
+      , _hintsShown = 0, _dirty = False, _movesRevealed = False, _preludeSrc = []
+      , _caret = Nothing }
   SlotPuzzle _ _ z ->
     let t = levelTemplate (puzzleLevel z)
     in m { _slotIx = i, _editable = ms t
          , _result = checkLevel (puzzleLevel z) t, _history = []
-         , _hintsShown = 0, _dirty = False, _movesRevealed = False }
+         , _hintsShown = 0, _dirty = False, _movesRevealed = False
+         , _preludeSrc = preludeOfSlot (slotAt env i)
+         , _caret = Nothing }
 
 -- localStorage keys.
 progressKey, viewedKey, pretestKey, unlockedKey :: MisoString
@@ -828,14 +858,38 @@ applyPendingImport env = do
           pure (Just (Right (length keep)))
 
 
+-- | Replace the editable region wholesale (a Reset, a tap-to-fill, an Undo, a
+-- reformat, a restored draft). The tracked caret is only meaningful while the
+-- player is typing, so it is dropped here rather than left pointing into text
+-- that no longer exists — a stale offset would show the input method's hint row
+-- against an abbreviation nobody is typing.
+putEditable :: MisoString -> Effect parent props Model Action
+putEditable s = do
+  editable .= s
+  caret    .= Nothing
+
 updateModel :: GameEnv -> Action -> Effect parent props Model Action
 updateModel env = \case
+  -- Typing. The Unicode input method runs here: the input event carries only the
+  -- new value, so the caret is recovered by diffing against the value the model
+  -- held ('insertionPoint'), and an abbreviation that fires rewrites the text
+  -- before it is stored. A rewrite moves the caret, and the browser would leave
+  -- it at the end of the re-rendered value, so it is put back explicitly.
   SetEditable s -> do
-    editable .= s
+    before <- use editable
+    let typed = fromMisoString s
+        pos   = insertionPoint (fromMisoString before) typed
+        fired = pos >>= applyAbbrev typed
+        s'    = maybe s (ms . fst) fired
+    editable .= s'
+    caret    .= (fmap snd fired <|> pos)
+    case fired of
+      Just (_, c) -> io_ (setEditorCaret c)
+      Nothing     -> pure ()
     dirty .= True            -- typed since the last check: the shown result is stale
     mix <- currentPuzzleIx
     case mix of
-      Just ix -> io_ (saveDraft env ix s)
+      Just ix -> io_ (saveDraft env ix s')
       Nothing -> pure ()
   ToggleMap -> mapOpen %= not
   SelectSlot i -> gotoSlot i
@@ -850,7 +904,7 @@ updateModel env = \case
     e <- use editable
     history %= (e :)         -- a mistaken Reset can be undone
     let t = levelTemplate (nthLevel env ix)
-    editable .= ms t
+    putEditable (ms t)
     movesRevealed .= False
     setResult (checkLevel (nthLevel env ix) t)
     io_ (removeDraft env ix)     -- drop the draft so the template stays on next load
@@ -905,7 +959,7 @@ updateModel env = \case
     mix <- currentPuzzleIx
     if mix == Just i
       then do
-        editable .= s
+        putEditable s
         setResult (checkLevel (nthLevel env i) (fromMisoString s))
       else pure ()
   Refine ins -> withPuzzle $ \ix -> do
@@ -914,7 +968,7 @@ updateModel env = \case
     history %= (e :)         -- remember the pre-refine text so the tap can be undone
     let e'  = maybeFormat foc (refineFirstHole ins (fromMisoString e))
         res = checkLevel (nthLevel env ix) e'
-    editable .= ms e'
+    putEditable (ms e')
     movesRevealed .= False    -- the hole advanced; re-obscure any revealed moves
     setResult res
     io_ (saveDraft env ix (ms e'))
@@ -925,7 +979,7 @@ updateModel env = \case
     case (hs, mix) of
       (prev : rest, Just ix) -> do
         history  .= rest
-        editable .= prev
+        putEditable prev
         movesRevealed .= False
         setResult (checkLevel (nthLevel env ix) (fromMisoString prev))
         io_ (saveDraft env ix prev)
@@ -937,7 +991,7 @@ updateModel env = \case
     -- With format-on-check on, a check first tidies the region in place (an
     -- undoable, saved edit), then checks the formatted text.
     if e /= e0
-      then do history %= (e0 :); editable .= e; io_ (saveDraft env ix e)
+      then do history %= (e0 :); putEditable e; io_ (saveDraft env ix e)
       else pure ()
     let res = checkLevel (nthLevel env ix) (fromMisoString e)
     setResult res
@@ -952,7 +1006,7 @@ updateModel env = \case
       then pure ()
       else do
         history %= (e :)         -- formatting can be undone
-        editable .= e'
+        putEditable e'
         setResult (checkLevel (nthLevel env ix) (fromMisoString e'))
         io_ (saveDraft env ix e')
   ExportProgress -> io_ (exportProgress env)
@@ -1009,16 +1063,17 @@ updateModel env = \case
       movesRevealed .= False   -- and with any obscured moves hidden again
       mapOpen       .= False   -- collapse the map after a jump, back to content
       io_ (setHash (slotAnchorAt env i))
+      preludeSrc .= preludeOfSlot (slotAt env i)
       case slotAt env i of
         SlotProse _ p -> do
-          editable .= ""
+          putEditable ""
           setResult NotChecked
           viewed %= Set.insert (proseId p)
           v <- use viewed
           io_ (saveViewed v)
         SlotPuzzle _ ix z -> do
           let t = levelTemplate (puzzleLevel z)
-          editable .= ms t
+          putEditable (ms t)
           setResult (checkLevel (puzzleLevel z) t)
           io (loadDraftAction env ix)
 
@@ -1371,7 +1426,7 @@ puzzleSlotView env m sid ix z =
            ] []
   , H.h3_ [] [ text "Goal" ]
   , H.pre_ [ P.class_ "goal" ] [ text (ms (levelStatement lvl)) ]
-  , preludeView lvl
+  , preludeView m lvl
   ]
   <> body
   <> [ advanceView env m solvedAccepted, navBar env m ]
@@ -1397,6 +1452,7 @@ puzzleSlotView env m sid ix z =
           pretestControls env m z
           <> [ H.h3_ [] [ text "Your proof" ]
              , editorView (m ^. editable) (resultErrorLines (m ^. result))
+             , abbrevView m
              , H.h3_ [] [ text "Moves" ]
              , movesView lvl m
              , inventoryView lvl
@@ -1520,22 +1576,55 @@ sectionDoneBadge env m sid
   where
     title = maybe "" sectionTitle (find ((== sid) . sectionId) (envSections env))
 
+-- | Put a literal newline back between per-line spans (none after the last), so
+-- the rendered text reproduces the source exactly. Shared by the editor's
+-- highlight layer and the prelude panel, both of which wrap each line in its own
+-- element to carry a per-line class.
+intersperseNewlines :: [View Model Action] -> [View Model Action]
+intersperseNewlines = \case
+  []       -> []
+  [v]      -> [v]
+  (v : vs) -> v : text "\n" : intersperseNewlines vs
+
 -- | The level's read-only prelude. It is reference material, not the focus, so
 -- it is collapsed by default; opening it reveals the given definitions,
 -- syntax-highlighted with the same tokeniser as the editor.
-preludeView :: Level -> View Model Action
-preludeView lvl =
+--
+-- What a @#data@ declaration /generates/ is spelled out in place, as rzk's own
+-- @eliminate with@ / @compute with@ re-ascription clauses (see
+-- 'annotatedPrelude'), so a player reading @#data Void@ can see that
+-- @rec-Void@ exists and what it takes. Those lines are dimmed, since they are
+-- rzk's words rather than the author's, and the source is otherwise verbatim.
+preludeView :: Model -> Level -> View Model Action
+preludeView m lvl =
   H.details_ [ P.class_ "prelude-wrap" ]
     [ H.summary_ [] [ text "Prelude (given)" ]
     , H.pre_ [ P.class_ "prelude" ]
-        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
-        | Tok cls txt <- highlight (levelPrelude lvl)
-        ]
+        (intersperseNewlines [ lineSpan gen toks | (gen, toks) <- lns ])
     ]
+  where
+    -- Fall back to the raw source before the slot's lines have been computed
+    -- (a puzzle reached without going through a slot entry, e.g. the very first
+    -- render), so the panel is never empty.
+    annotated = case m ^. preludeSrc of
+      [] -> [ (l, False) | l <- T.splitOn "\n" (levelPrelude lvl) ]
+      ls -> ls
+    -- Tokenise the assembled text in one go, so bracket depth threads across
+    -- lines exactly as it does in the editor.
+    lns = zip (map snd annotated)
+              (highlightLines (T.intercalate "\n" (map fst annotated)))
+    lineSpan gen toks =
+      H.span_ [ P.class_ (if gen then "prelude-gen" else "") ]
+        [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
+        | Tok cls txt <- toks
+        ]
 
 -- | The L1 editor: a transparent textarea over a syntax-highlighted @<pre>@.
--- The pre is absolutely positioned to fill the wrapper, which is sized by the
--- textarea, so the two stay the same height (even on manual resize). Both share
+-- The @<pre>@ is the layer in normal flow, so it sizes the box, and the textarea
+-- is stretched over it. That way round the editor grows with what the player
+-- types — wrapped long lines included — and never scrolls inside itself, which is
+-- what keeps the two layers aligned: a textarea that scrolls internally slides
+-- its text out from under a highlight layer that cannot follow. Both share
 -- identical metrics in CSS, so the coloured layer lines up with the text the
 -- player types. The tokeniser is lossless, so no character is dropped or added.
 --
@@ -1549,10 +1638,13 @@ editorView code errLines =
   H.div_ [ P.class_ "editor-wrap" ]
     [ H.pre_ [ P.class_ "editor-hl" ]
         (intersperseNewlines
-           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ])
+           [ lineSpan i toks | (i, toks) <- zip [1 ..] (highlightLines (fromMisoString code)) ]
+         -- One newline more than the source: a @<pre>@ does not reserve a row for
+         -- a trailing newline, so without this the box is a row short of the
+         -- caret exactly when the player has just opened a new last line.
+         <> [ text "\n" ])
     , H.textarea_
         [ P.class_ "editor"
-        , P.rows_ "6"
         , P.value_ code
         , H.onInput SetEditable
         ]
@@ -1566,12 +1658,36 @@ editorView code errLines =
         ]
     lineCls :: Int -> T.Text
     lineCls i = "hl-line" <> if Set.member i errSet then " hl-errline" else ""
-    -- Put a literal newline back between the per-line spans (none after the last),
-    -- so the rendered text reproduces the source exactly.
-    intersperseNewlines = \case
-      []       -> []
-      [v]      -> [v]
-      (v : vs) -> v : text "\n" : intersperseNewlines vs
+
+-- | The Unicode input method's hint row: while an abbreviation is being typed,
+-- the abbreviations it could still become, with what each produces.
+--
+-- Rzk's notation has no ASCII spelling, so a player who types rather than taps
+-- has to know it is here at all; showing the table as it is used is how they
+-- find out. Rows are read-only — clicking one would take the focus (and the
+-- caret) out of the editor, which is the opposite of helpful mid-word.
+abbrevView :: Model -> View Model Action
+abbrevView m = case m ^. caret >>= pendingAbbrev (fromMisoString (m ^. editable)) of
+  Nothing  -> text ""
+  Just key -> case take abbrevRowLimit (completions key) of
+    []      -> text ""
+    matches ->
+      H.div_ [ P.class_ "abbrevs" ]
+        ( [ H.span_ [ P.class_ "abbrevs-head" ] [ text "\\" , text (ms key) ] ]
+          <> [ H.span_ [ P.class_ "abbrev" ]
+                 [ H.span_ [ P.class_ "abbrev-key" ] [ text (ms ("\\" <> k)) ]
+                 , H.span_ [ P.class_ "abbrev-ch" ] [ text (ms ch) ]
+                 ]
+             | (k, ch) <- matches
+             ]
+          <> [ H.span_ [ P.class_ "abbrevs-more" ] [ text "…" ]
+             | length (completions key) > abbrevRowLimit ] )
+
+-- | How many abbreviations the hint row shows before trailing off. A bare
+-- backslash matches the whole table, which is a palette worth glancing at but
+-- not worth unrolling.
+abbrevRowLimit :: Int
+abbrevRowLimit = 12
 
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is
@@ -1789,17 +1905,39 @@ hintsView m lvl
 -- | When the level is solved, offer a step onward: the next /incomplete/ slot
 -- (an unviewed prose or an unsolved required puzzle), searching forward and
 -- wrapping past the end. A closing line shows once everything is done.
+--
+-- A starred extra is not incomplete for this purpose, so the onward step skips
+-- over one — which reads as a jump, since the level right after this one is
+-- silently passed by. When that is what happens, the extra is offered beside the
+-- main step as a second button, so both places to go are visible and the player
+-- chooses. ('nextIncomplete' can also land /on/ the extra by wrapping around once
+-- everything required is done; the guard keeps that from being offered twice.)
 advanceView :: GameEnv -> Model -> Bool -> View Model Action
 advanceView env m accepted
   | accepted =
       case nextIncomplete env m of
         Just j  -> H.div_ [ P.class_ "advance" ]
-                     [ H.button_ [ H.onClick (SelectSlot j) ]
-                         [ text (ms ("Next: " <> slotLabel (slotAt env j))) ] ]
+                     ( [ H.button_ [ H.onClick (SelectSlot j) ]
+                           [ text (ms ("Next: " <> slotLabel (slotAt env j))) ] ]
+                       <> [ H.button_ [ P.class_ "advance-extra", H.onClick (SelectSlot k) ]
+                              [ text (ms ("★ Extra credit: " <> slotLabel (slotAt env k))) ]
+                          | Just k <- [skippedExtra env m], k /= j ] )
         Nothing -> H.div_ [ P.class_ "advance" ]
                      [ H.p_ [ P.class_ "all-done" ]
                          [ text "🏆 You've finished every activity. The end — for now!" ] ]
   | otherwise = text ""
+
+-- | The slot immediately after the current one, when it is an unsolved starred
+-- extra: the one the onward step passes over. 'Nothing' when the next slot is
+-- required, already done, or there is no next slot.
+skippedExtra :: GameEnv -> Model -> Maybe Int
+skippedExtra env m
+  | k < length (envSlots env)
+  , let s = slotAt env k
+  , slotExtra s
+  , not (slotDone (m ^. solved) (m ^. viewed) (m ^. pretest) s) = Just k
+  | otherwise = Nothing
+  where k = _slotIx m + 1
 
 -- | The next incomplete /required/ slot, searching forward from the current one
 -- and wrapping past the end. 'Nothing' when everything required is done.
@@ -1873,14 +2011,28 @@ crashReport lvl editable err = T.unlines
 -- since the shown result was checked, it flags that the result is stale. (With
 -- the check running synchronously the result is otherwise always current; this
 -- covers the gap after typing, before the next Check or tap.)
+--
+-- Unbalanced brackets are called out here too, whether or not the result is
+-- stale. rzk reports a missing @)@ as a parse error at the end of the file,
+-- which says nothing about where the bracket should go, and the offending
+-- bracket is drawn in the editor above ('markUnmatched') — the count is the
+-- pointer to it.
 checkStatusView :: Model -> View Model Action
-checkStatusView m
-  | m ^. dirty && notChecked = text ""   -- nothing checked yet: no stale result to flag
-  | m ^. dirty               =
-      H.p_ [ P.class_ "check-stale" ]
-        [ text "● Edited since last check — press Check to update the result." ]
-  | otherwise                = text ""
-  where notChecked = case m ^. result of NotChecked -> True; _ -> False
+checkStatusView m = H.div_ [] (parenNote <> staleNote)
+  where
+    notChecked = case m ^. result of NotChecked -> True; _ -> False
+    staleNote
+      -- nothing checked yet: no stale result to flag
+      | m ^. dirty, not notChecked =
+          [ H.p_ [ P.class_ "check-stale" ]
+              [ text "● Edited since last check — press Check to update the result." ] ]
+      | otherwise = []
+    parenNote = case parenBalance (fromMisoString (m ^. editable)) of
+      (0, 0) -> []
+      (u, x) -> [ H.p_ [ P.class_ "paren-note" ] [ text (ms (message u x)) ] ]
+    message :: Int -> Int -> T.Text
+    message u x = "● Unbalanced brackets: " <> T.intercalate " and " (parts u x) <> "."
+    parts u x = [ tshow u <> " unclosed (" | u > 0 ] <> [ tshow x <> " stray )" | x > 0 ]
 
 resultView :: Level -> MisoString -> CheckResult -> View Model Action
 resultView lvl editable = \case

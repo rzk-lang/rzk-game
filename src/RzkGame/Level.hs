@@ -32,6 +32,7 @@ module RzkGame.Level
   , hintMatchesGoal
   , visibleHints
   , plainHintCount
+  , annotatedPrelude
   , inventoryViolations
   , forbiddenViolations
   , gatePassed
@@ -49,15 +50,22 @@ import           GHC.Generics         (Generic)
 import           System.IO.Unsafe     (unsafePerformIO)
 import           Text.Read            (readMaybe)
 
+import           Language.Rzk.Syntax.Abs (Command, Command' (..),
+                                         Constructor' (..), DataBody' (..),
+                                         DataElim' (..), Module' (..),
+                                         VarIdent, VarIdent' (..),
+                                         VarIdentToken (..))
+
 import           RzkGame.Highlight    (Tok (..), TokClass (Plain), highlight)
 import           RzkGame.Parse        (safeParseModule)
 import           RzkGame.Subsume      (subsumesSolution)
 
 import           Rzk.Diagnostic       (locationOfTypeError)
-import           Rzk.TypeCheck        (HoleEntry (..), HoleInfo (..),
+import           Rzk.TypeCheck        (DeclKind (..), DeclView (..),
+                                       HoleEntry (..), HoleInfo (..),
                                        LocationInfo (..),
                                        OutputDirection (TopDown), checkedErrors,
-                                       ppTypeErrorInScopedContext,
+                                       declViews, ppTypeErrorInScopedContext,
                                        typecheckModulesWithHolesAndLemmas)
 
 -- | A granted lemma in a level's inventory: a prelude-defined name the level
@@ -241,6 +249,134 @@ toHoleView HoleInfo{..} = HoleView
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+-- | The prelude's lines, each flagged 'True' when this module inserted it.
+--
+-- A @#data@ declaration brings its eliminators (and, for a path constructor,
+-- its propositional computation rules) into scope without writing any of them
+-- down, so a player reading @#data Void@ has no way to learn that @rec-Void@
+-- exists, let alone what it takes. Rather than list those names beside the
+-- prelude, spell them out /in/ it, using rzk's own re-ascription clauses:
+--
+-- > #data Void
+-- >   eliminate with rec-Void : (C : U) → Void → C
+-- >   eliminate with ind-Void : (C : Void → U) → (x : Void) → C x
+--
+-- What the player reads is then rzk they could have written themselves, in the
+-- place where it belongs, and the flag lets the view mark it as rzk's words
+-- rather than the author's.
+--
+-- Only what is /missing/ is inserted: an author who already re-ascribed an
+-- entry has said what they wanted said, and it is left alone. Types are read
+-- back from rzk after checking the prelude, so they are the types it generated
+-- rather than a reconstruction here, which covers higher inductive types for
+-- free.
+--
+-- Total: a prelude that does not parse or does not check is returned as it
+-- stands. Not on the hot path — computed once when a slot is entered.
+annotatedPrelude :: Text -> [(Text, Bool)]
+annotatedPrelude prelude = case clausesFor prelude ls of
+  Nothing      -> [ (l, False) | l <- ls ]
+  Just clauses ->
+    concat [ (l, False) : [ (c, True) | c <- lookupAll i clauses ]
+           | (i, l) <- zip [1 :: Int ..] ls ]
+  where
+    ls = T.splitOn "\n" prelude
+    lookupAll i cs = concat [ block | (end, block) <- cs, end == i ]
+
+-- | The clause lines to insert, each paired with the source line it goes after.
+-- 'Nothing' when the prelude does not parse or does not check, so the caller
+-- shows it unchanged.
+clausesFor :: Text -> [Text] -> Maybe [(Int, [Text])]
+clausesFor prelude ls = do
+  m@(Module _ _ cmds) <- either (const Nothing) Just (safeParseModule prelude)
+  checked <- case typecheckModulesWithHolesAndLemmas [] [("prelude", m)] of
+    Left _             -> Nothing
+    Right (checked, _) -> Just checked
+  let written   = writtenNames cmds
+      dataNames = [ varText x | CommandData _ x _ _ _ _ <- cmds ]
+      -- Anything in scope that the source does not declare, rzk generated.
+      generated = [ (n, declViewKind d, tshow (declViewType d))
+                  | (_, ds) <- declViews checked, d <- ds
+                  , let n = tshow (declViewName d), n `notElem` written ]
+  pure [ (end, block)
+       | (dataName, end) <- dataBlocks ls cmds
+       , let block = [ "  " <> kw <> " with " <> n <> " : " <> ty
+                     | (n, kind, ty) <- generated
+                     , Just kw <- [clauseKeyword dataNames dataName n kind] ]
+       , not (null block)
+       ]
+
+-- | Which clause spells a generated entry out, if it belongs to the given
+-- datatype: an eliminator is re-ascribed with @eliminate with@, and a path
+-- constructor's propositional computation rule — which rzk records as an opaque
+-- postulate named @compute-ind-D-c@ or @compute-rec-D-c@ — with @compute with@.
+-- Anything else is not a clause and is skipped.
+clauseKeyword :: [Text] -> Text -> Text -> DeclKind -> Maybe Text
+clauseKeyword dataNames dataName entry = \case
+  DeclKindDataElim parent | tshow parent == dataName -> Just "eliminate"
+  DeclKindPostulate
+    | owns dataName
+    -- The longest owning name wins, so @compute-ind-S1-loop@ is not read as a
+    -- rule of a datatype @S@ that also happens to be declared.
+    , not (any (\d -> T.length d > T.length dataName && owns d) dataNames)
+    -> Just "compute"
+  _ -> Nothing
+  where
+    owns d = any (`T.isPrefixOf` entry)
+      [ "compute-ind-" <> d <> "-", "compute-rec-" <> d <> "-" ]
+
+-- | Every name the source itself declares: the commands, a datatype's
+-- constructors, and any entry an existing re-ascription clause already names.
+-- Whatever is in scope beyond this, rzk generated.
+writtenNames :: [Command] -> [Text]
+writtenNames = concatMap $ \case
+  CommandDefine _ x _ _ _ _  -> [varText x]
+  CommandPostulate _ x _ _ _ -> [varText x]
+  CommandAssume _ xs _       -> map varText xs
+  CommandData _ x _ _ _ body -> varText x : bodyNames body
+  _                          -> []
+  where
+    bodyNames (SomeDataBody _ cons elims) =
+      [ varText c | Constructor _ c _ _ <- cons ] <> concatMap elimName elims
+    bodyNames NoDataBody{} = []
+    elimName (DataElim _ x _)    = [varText x]
+    elimName (DataCompute _ x _) = [varText x]
+
+-- | A surface identifier's text. (Its 'Show' is the annotated constructor, not
+-- the name, so it cannot stand in for this.)
+varText :: VarIdent -> Text
+varText (VarIdent _ (VarIdentToken t)) = t
+
+-- | Each @#data@ command's name paired with the last source line of its own
+-- command: the line before the next command that carries a position, or the end
+-- of the prelude. Clauses belong at the end of the declaration they extend.
+--
+-- Blank lines at that boundary belong to the gap between declarations, not to
+-- the declaration, so the end walks back past them: a clause goes right under
+-- the last line of the @#data@ itself, not after the blank line following it.
+dataBlocks :: [Text] -> [Command] -> [(Text, Int)]
+dataBlocks ls cmds =
+  [ (varText x, backToText (endAfter i))
+  | (i, CommandData _ x _ _ _ _) <- zip [0 :: Int ..] cmds
+  ]
+  where
+    endAfter i = case mapMaybe commandLine (drop (i + 1) cmds) of
+      next : _ -> next - 1
+      []       -> length ls
+    backToText n
+      | n > 1, maybe True (T.all isSpace) (lineAt n) = backToText (n - 1)
+      | otherwise = n
+    lineAt n = case drop (n - 1) ls of { l : _ -> Just l ; [] -> Nothing }
+
+-- | The line a command starts on, when the parser recorded one.
+commandLine :: Command -> Maybe Int
+commandLine = \case
+  CommandDefine p _ _ _ _ _  -> fst <$> p
+  CommandPostulate p _ _ _ _ -> fst <$> p
+  CommandAssume p _ _        -> fst <$> p
+  CommandData p _ _ _ _ _    -> fst <$> p
+  _                          -> Nothing
 
 -- | The /inventory gating/ check: the prelude lemmas the editable region uses
 -- in its proof but that the level does not grant. rzk has no usage restriction,

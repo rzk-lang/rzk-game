@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Agda-style Unicode input in the editor. Rzk's notation (`→`, `↦`, `≡`, `Δ¹`, `0₂`, `Σ`, `ℕ`) has no ASCII spelling, so a player typing a proof by hand had no way to enter it; typing `\to` now produces `→`, following the `agda-input` abbreviations. An abbreviation fires on a space, or on its own as soon as nothing longer extends it, and the ones still on offer are listed under the editor while one is open. The committing space is kept rather than swallowed, since every abbreviation it applies to produces an infix operator.
+- The prelude panel spells out what a `#data` declaration generates, as rzk's own `eliminate with` / `compute with` re-ascription clauses on the declaration itself. A `#data Void` brings `rec-Void` and `ind-Void` into scope without writing them down; both now appear under it with their types, dimmed to mark them as rzk's words rather than the author's. Only missing entries are inserted, so an author who already re-ascribed one keeps their spelling, and the types are read back from rzk rather than reconstructed, which covers higher inductive types.
+- Bracket nesting is coloured by depth in the editor, so a pair reads as a pair, and a bracket with no partner is drawn as an error with a count above the result. rzk reports a missing `)` as a parse error at the end of the file, which says nothing about where the bracket belongs.
+- When the step onward skips over a starred extra — extras do not gate completion, so the green button passes them by — the extra is offered beside it as a second button, rather than being silently jumped over.
+
+### Fixed
+
+- The editor grows with its content instead of scrolling inside itself. Past six rows the textarea scrolled while the highlight layer stacked over it could not, so the text slid out from under its own colours, the caret went off the bottom, and holes at the end of a long definition could not be reached. The highlight layer now sizes the box and the textarea is stretched over it, which also retires the manual resize handle.
+
 ## [0.5.0] - 2026-07-28
 
 ### Added
