@@ -849,6 +849,16 @@ applyPendingImport env = do
           pure (Just (Right (length keep)))
 
 
+-- | Replace the editable region wholesale (a Reset, a tap-to-fill, an Undo, a
+-- reformat, a restored draft). The tracked caret is only meaningful while the
+-- player is typing, so it is dropped here rather than left pointing into text
+-- that no longer exists — a stale offset would show the input method's hint row
+-- against an abbreviation nobody is typing.
+putEditable :: MisoString -> Effect parent props Model Action
+putEditable s = do
+  editable .= s
+  caret    .= Nothing
+
 updateModel :: GameEnv -> Action -> Effect parent props Model Action
 updateModel env = \case
   -- Typing. The Unicode input method runs here: the input event carries only the
@@ -885,7 +895,7 @@ updateModel env = \case
     e <- use editable
     history %= (e :)         -- a mistaken Reset can be undone
     let t = levelTemplate (nthLevel env ix)
-    editable .= ms t
+    putEditable (ms t)
     movesRevealed .= False
     setResult (checkLevel (nthLevel env ix) t)
     io_ (removeDraft env ix)     -- drop the draft so the template stays on next load
@@ -940,7 +950,7 @@ updateModel env = \case
     mix <- currentPuzzleIx
     if mix == Just i
       then do
-        editable .= s
+        putEditable s
         setResult (checkLevel (nthLevel env i) (fromMisoString s))
       else pure ()
   Refine ins -> withPuzzle $ \ix -> do
@@ -949,7 +959,7 @@ updateModel env = \case
     history %= (e :)         -- remember the pre-refine text so the tap can be undone
     let e'  = maybeFormat foc (refineFirstHole ins (fromMisoString e))
         res = checkLevel (nthLevel env ix) e'
-    editable .= ms e'
+    putEditable (ms e')
     movesRevealed .= False    -- the hole advanced; re-obscure any revealed moves
     setResult res
     io_ (saveDraft env ix (ms e'))
@@ -960,7 +970,7 @@ updateModel env = \case
     case (hs, mix) of
       (prev : rest, Just ix) -> do
         history  .= rest
-        editable .= prev
+        putEditable prev
         movesRevealed .= False
         setResult (checkLevel (nthLevel env ix) (fromMisoString prev))
         io_ (saveDraft env ix prev)
@@ -972,7 +982,7 @@ updateModel env = \case
     -- With format-on-check on, a check first tidies the region in place (an
     -- undoable, saved edit), then checks the formatted text.
     if e /= e0
-      then do history %= (e0 :); editable .= e; io_ (saveDraft env ix e)
+      then do history %= (e0 :); putEditable e; io_ (saveDraft env ix e)
       else pure ()
     let res = checkLevel (nthLevel env ix) (fromMisoString e)
     setResult res
@@ -987,7 +997,7 @@ updateModel env = \case
       then pure ()
       else do
         history %= (e :)         -- formatting can be undone
-        editable .= e'
+        putEditable e'
         setResult (checkLevel (nthLevel env ix) (fromMisoString e'))
         io_ (saveDraft env ix e')
   ExportProgress -> io_ (exportProgress env)
@@ -1046,14 +1056,14 @@ updateModel env = \case
       io_ (setHash (slotAnchorAt env i))
       case slotAt env i of
         SlotProse _ p -> do
-          editable .= ""
+          putEditable ""
           setResult NotChecked
           viewed %= Set.insert (proseId p)
           v <- use viewed
           io_ (saveViewed v)
         SlotPuzzle _ ix z -> do
           let t = levelTemplate (puzzleLevel z)
-          editable .= ms t
+          putEditable (ms t)
           setResult (checkLevel (puzzleLevel z) t)
           io (loadDraftAction env ix)
 
