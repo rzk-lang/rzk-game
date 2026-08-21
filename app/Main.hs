@@ -662,8 +662,12 @@ copyToClipboard t = [js| navigator.clipboard.writeText(${t}); |]
 -- | Move the editor's caret to an offset, once miso has patched the new value in
 -- (see @caret.js@). Needed only after the input method rewrites the text under
 -- the player: an ordinary keystroke leaves the caret alone.
-setEditorCaret :: Int -> IO ()
-setEditorCaret n = let n' = ms (show n) in [js| setEditorCaret(${n'}); |]
+-- The text the offset refers to is passed too: @caret.js@ waits for the textarea
+-- to hold it before placing the caret, because miso patches the DOM in an
+-- animation frame of its own and assigning @value@ moves the caret to the end.
+setEditorCaret :: Int -> MisoString -> IO ()
+setEditorCaret n expected =
+  let n' = ms (show n) in [js| setEditorCaret(${n'}, ${expected}); |]
 
 initModel :: GameEnv -> Maybe (Either T.Text Int) -> Model
 initModel env importResult = enterSlotPure env 0
@@ -1026,7 +1030,7 @@ updateModel env = \case
     editable .= s'
     caret    .= (fmap snd fired <|> pos)
     case fired of
-      Just (_, c) -> io_ (setEditorCaret (charToUtf16 (fromMisoString s') c))
+      Just (_, c) -> io_ (setEditorCaret (charToUtf16 (fromMisoString s') c) s')
       Nothing     -> pure ()
     dirty .= True            -- typed since the last check: the shown result is stale
     mix <- currentPuzzleIx
