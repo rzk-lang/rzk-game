@@ -31,6 +31,8 @@ module RzkGame.Input
   , pendingAbbrev
   , applyAbbrev
   , insertionPoint
+  , utf16ToChar
+  , charToUtf16
   ) where
 
 import           Control.Applicative ((<|>))
@@ -158,3 +160,35 @@ insertionPoint old new
     commonPrefixLen a b = case T.commonPrefixes a b of
       Just (c, _, _) -> T.length c
       Nothing        -> 0
+
+-- | The number of UTF-16 code units a character occupies, which is what a DOM
+-- text offset counts. Everything outside the Basic Multilingual Plane takes two.
+utf16Width :: Char -> Int
+utf16Width c
+  | fromEnum c > 0xFFFF = 2
+  | otherwise           = 1
+
+-- | Convert a UTF-16 code-unit offset — what a textarea's @selectionStart@
+-- reports — to a character offset, which is what 'applyAbbrev' and "Data.Text"
+-- count in.
+--
+-- The two agree for every character in the abbreviation table but one: @𝕌@ lies
+-- outside the Basic Multilingual Plane and so takes two code units. Without this
+-- conversion, a caret after a @𝕌@ would be reported one position further along
+-- than it is, and the abbreviation under it would be misread.
+--
+-- An offset landing inside a surrogate pair (which a browser does not produce)
+-- rounds down to the character containing it.
+utf16ToChar :: Text -> Int -> Int
+utf16ToChar txt n = go 0 0 (T.unpack txt)
+  where
+    go chars units cs
+      | units >= n = chars
+      | otherwise  = case cs of
+          []      -> chars
+          c : cs' -> go (chars + 1) (units + utf16Width c) cs'
+
+-- | The inverse of 'utf16ToChar': a character offset to the UTF-16 offset that
+-- @setSelectionRange@ expects when the caret is put back.
+charToUtf16 :: Text -> Int -> Int
+charToUtf16 txt n = sum (map utf16Width (T.unpack (T.take n txt)))
