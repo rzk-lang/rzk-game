@@ -56,6 +56,7 @@ buildGame bs = do
            , gameInfoCompletion = gsCompletion cfg
            , gameInfoRepository = gsRepository cfg
            , gameInfoEditUrl    = gsEditUrl cfg
+           , gameInfoSource     = bundleSource bundle
            , gameInfoSources    = sourceMap files
            }
        , chapters )

@@ -66,12 +66,16 @@ import           RzkGame.Level       (Hint (..), InventoryEntry (..),
 data Bundle = Bundle
   { bundleConfig :: GameSpec
   , bundleFiles  :: Map Text FileSpec
+  , bundleSource :: Maybe Text
+    -- ^ where the content came from, stamped by the bundle step when the caller
+    -- knows (CI does, a local run does not).
   } deriving (Eq, Show)
 
 instance FromJSON Bundle where
   parseJSON = withObject "Bundle" $ \o -> Bundle
     <$> o .: "config"
     <*> o .:? "files" .!= mempty
+    <*> o .:? "source"
 
 -- | The table of contents (the @game.yaml@): a title and the ordered chapters.
 data GameSpec = GameSpec

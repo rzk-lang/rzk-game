@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- The game names the build it is. A footer line carries the engine version, and the commit the content was bundled from when the bundle step knew it, and both are stamped into the "Copy issue report" text. A crash report that cannot be tied to a build is much harder to act on, and the engine version also pins which rzk it was built against, since the changelog records that per release. The commit comes from `RZK_GAME_SOURCE`, which `rzk-game-action` sets to the building commit; a bundle built locally carries nothing and the game says nothing.
+
 - Four optional `game.yaml` fields, each replacing something the engine would otherwise say for itself: `subtitle` (the line under the title), `completion` (what a player reads once everything is done, as Markdown, so a game can point at what comes next), `repository` (where the content lives, shown in a footer), and `edit-url` (a template containing `{file}`, which gives every page a link to its own source). `repository` and `edit-url` are for content only. A checker crash stays reported to the engine's own tracker, which is not the author's to receive.
 
 ### Fixed

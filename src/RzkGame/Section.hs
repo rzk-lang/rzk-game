@@ -137,6 +137,8 @@ data GameInfo = GameInfo
   , gameInfoCompletion :: Maybe Text  -- ^ shown when everything is done
   , gameInfoRepository :: Maybe Text  -- ^ where the content lives
   , gameInfoEditUrl    :: Maybe Text  -- ^ template with @{file}@, for per-item links
+  , gameInfoSource     :: Maybe Text
+    -- ^ the commit the content was bundled from, when the bundle step knew it
   , gameInfoSources    :: Map Text Text
     -- ^ item id to source path, so an item can link to its own file. Kept beside
     -- the items rather than on them: the built-in game is Haskell values with no
@@ -146,7 +148,7 @@ data GameInfo = GameInfo
 
 -- | A game with only the two facts every game has. The loader fills in the rest.
 gameInfo :: Text -> Text -> GameInfo
-gameInfo gid title = GameInfo gid title Nothing Nothing Nothing Nothing Map.empty
+gameInfo gid title = GameInfo gid title Nothing Nothing Nothing Nothing Nothing Map.empty
 
 -- | The source path an item was loaded from, if the game came from a bundle.
 sourceOf :: GameInfo -> Text -> Maybe Text
