@@ -22,6 +22,7 @@ import qualified Miso.Html.Property as P
 import qualified Miso.Svg           as S
 import qualified Miso.Svg.Property  as SP
 import           Miso.FFI.QQ        (js)
+import           Miso.JSON          (withObject, (.:), (.:?))
 import           Miso.Lens
 import           Miso.String        (MisoString, fromMisoString, ms)
 
@@ -50,8 +51,8 @@ import           RzkGame.Content    (apHomLevel, arrInArrLevel, composeLevel,
                                      witnessSquareLevel)
 import           RzkGame.Highlight  (Tok (..), errorSpan, highlight,
                                      highlightLines, parenBalance, tokClassName)
-import           RzkGame.Input      (applyAbbrev, completions, insertionPoint,
-                                     pendingAbbrev)
+import           RzkGame.Input      (applyAbbrev, charToUtf16, completions,
+                                     insertionPoint, pendingAbbrev, utf16ToChar)
 import           RzkGame.Level
 import           RzkGame.Format     (formatEditable)
 import           RzkGame.Loader     (buildGame)
@@ -248,7 +249,7 @@ tshow :: Show a => a -> T.Text
 tshow = T.pack . show
 
 data Action
-  = SetEditable MisoString
+  = SetEditable MisoString (Maybe Int)
   | Refine T.Text
   | Undo                       -- ^ revert the last tap-to-refine or Reset
   | Check
@@ -1011,16 +1012,21 @@ updateModel env = \case
   -- held ('insertionPoint'), and an abbreviation that fires rewrites the text
   -- before it is stored. A rewrite moves the caret, and the browser would leave
   -- it at the end of the re-rendered value, so it is put back explicitly.
-  SetEditable s -> do
+  SetEditable s mu16 -> do
     before <- use editable
     let typed = fromMisoString s
-        pos   = insertionPoint (fromMisoString before) typed
+        -- The caret the browser actually has, converted from UTF-16 units to
+        -- characters. 'insertionPoint' remains only as a fallback for an event
+        -- that reports no selection; it cannot place a caret inside a run of
+        -- identical characters, which is why it is no longer the first choice.
+        pos   = (utf16ToChar typed <$> mu16)
+                  <|> insertionPoint (fromMisoString before) typed
         fired = pos >>= applyAbbrev typed
         s'    = maybe s (ms . fst) fired
     editable .= s'
     caret    .= (fmap snd fired <|> pos)
     case fired of
-      Just (_, c) -> io_ (setEditorCaret c)
+      Just (_, c) -> io_ (setEditorCaret (charToUtf16 (fromMisoString s') c))
       Nothing     -> pure ()
     dirty .= True            -- typed since the last check: the shown result is stale
     mix <- currentPuzzleIx
@@ -1808,6 +1814,26 @@ preludeView m lvl =
 -- rzk located the error at a column, only the offending span is underlined
 -- ('errorSpan' bounds it by the enclosing bracket group); with no column — a
 -- parse error, say — the whole line is, which is all that is known.
+-- | The editor's @input@ event: the new value together with the caret the
+-- browser actually has, rather than one guessed by diffing the value against
+-- the one the model held.
+--
+-- miso's own 'valueDecoder' reads @event.target.value@ and nothing else. Its
+-- event serialiser drops @selectionStart@ for an @input@ element, but not for a
+-- @textarea@, so the editor can read it. It is a UTF-16 offset; 'utf16ToChar'
+-- converts it.
+--
+-- The caret is decoded as optional so that an event without one degrades to the
+-- old inference rather than failing to decode at all.
+editDecoder :: Decoder (MisoString, Maybe Int)
+editDecoder = Decoder
+  -- Spelled out rather than built with 'Miso.Event.Decoder.at', whose name
+  -- clashes with the lens 'Miso.Lens.at' that this module also imports.
+  { decodeAt = DecodeTarget [ "target" ]
+  , decoder  = withObject "target" (\o ->
+      (,) <$> o .: "value" <*> o .:? "selectionStart")
+  }
+
 editorView :: MisoString -> [(Int, Maybe Int)] -> View Model Action
 editorView code errSpots =
   H.div_ [ P.class_ "editor-wrap" ]
@@ -1821,7 +1847,7 @@ editorView code errSpots =
     , H.textarea_
         [ P.class_ "editor"
         , P.value_ code
-        , H.onInput SetEditable
+        , on "input" editDecoder (\(v, c) _ -> SetEditable v c)
         ]
     ]
   where

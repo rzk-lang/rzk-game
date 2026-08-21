@@ -25,6 +25,7 @@ import           Data.IORef
 
 import           RzkGame.Content      (gameLevels, gameChapters, gameTitle)
 import qualified RzkGame.Content      as Content
+import           RzkGame.Input        (applyAbbrev, charToUtf16, utf16ToChar)
 import           RzkGame.Level
 import           RzkGame.Loader       (buildGame)
 import           RzkGame.Section
@@ -639,6 +640,37 @@ main = do
        ParseError{} -> True
        _            -> False)
 
+  putStrLn "== input method: the caret is a character offset, not a UTF-16 one =="
+  -- A textarea reports selectionStart in UTF-16 code units, while Data.Text (and
+  -- so the input method) counts characters. Every abbreviation but one produces a
+  -- BMP character, where the two agree; `𝕌` takes two code units.
+  check "utf16ToChar is the identity when every character is in the BMP"
+    (utf16ToChar "(t ≤ s)" 5 == 5)
+  check "utf16ToChar discounts a surrogate pair"
+    (utf16ToChar "𝕌 x" 3 == 2)
+  check "charToUtf16 inverts it"
+    (charToUtf16 "𝕌 x" 2 == 3)
+  check "the two round-trip on a mixed string"
+    (all (\i -> utf16ToChar mixed (charToUtf16 mixed i) == i) [0 .. T.length mixed])
+
+  putStrLn "== input method: an abbreviation commits wherever the caret is =="
+  -- Typing the committing space fires the abbreviation before it. This used to
+  -- depend on what followed the caret, because the caret was inferred by diffing
+  -- and a space typed before a space is an ambiguous diff. The caret now comes
+  -- from the DOM, so only the text before it matters.
+  let commits label txt caretAt expect = check
+        ("space-commits " <> label)
+        (fmap fst (applyAbbrev txt caretAt) == Just expect)
+  -- The caret is 7 in each: just after the space that was typed, which the text
+  -- already carries.
+  commits "at the end of the text"    "(t \\le " 7 "(t ≤ "
+  commits "before a closing paren"    "(t \\le )" 7 "(t ≤ )"
+  commits "before an existing space"  "(t \\le  s)" 7 "(t ≤  s)"
+  commits "before a newline"          "(t \\le \n y)" 7 "(t ≤ \n y)"
+  -- Auto-commit needs no space: nothing longer extends \Sigma.
+  check "auto-commits mid-term when no longer abbreviation extends the key"
+    (fmap fst (applyAbbrev "(\\Sigma x)" 7) == Just "(Σ x)")
+
   n <- readIORef failed
   if n == 0
     then putStrLn "\nAll Phase 3 spec/loader tests passed."
@@ -648,6 +680,10 @@ main = do
 loadedLevels :: [Chapter] -> [Level]
 loadedLevels chs =
   [ puzzleLevel z | SPuzzle z <- concatMap sectionItems (chaptersSections chs) ]
+
+-- | A string mixing BMP and astral characters, for the offset round-trip.
+mixed :: Text
+mixed = "a → 𝕌 ≤ b₀"
 
 isHoles :: CheckResult -> Bool
 isHoles (Holes _) = True
