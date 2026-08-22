@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Four optional `game.yaml` fields, each replacing something the engine would otherwise say for itself: `subtitle` (the line under the title), `completion` (what a player reads once everything is done, as Markdown, so a game can point at what comes next), `repository` (where the content lives, shown in a footer), and `edit-url` (a template containing `{file}`, which gives every page a link to its own source). `repository` and `edit-url` are for content only. A checker crash stays reported to the engine's own tracker, which is not the author's to receive.
 
+### Added
+
+- The Moves panel says why a move can appear twice. rzk offers a lemma at each number of arguments that fits, so the same name shows up applied to more holes, the extra ones standing for a cube variable or an endpoint. Those read as duplicates, and a player has to work out unaided that they are different moves. A note now appears under the panel, and only when such a repetition is actually offered, so it does not become wallpaper. Two moves that share a name but differ elsewhere are visibly different and do not trigger it.
+
 ### Fixed
 
 - The caret no longer jumps to the end of the editor when an abbreviation commits. `caret.js` restored it a frame before miso patched the textarea, and assigning `value` moves the caret to the end, so the restore was undone. It now waits for the textarea to hold the rewritten text before placing the caret. Latent until now: an abbreviation could only commit at the end of the text, where a caret at the end is what was wanted anyway.

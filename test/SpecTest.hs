@@ -640,6 +640,23 @@ main = do
        ParseError{} -> True
        _            -> False)
 
+  putStrLn "== moves panel: an arity ladder is recognised, a different move is not =="
+  -- rzk offers a lemma at each number of arguments that fits, so the same name
+  -- appears applied to more holes. Those read as duplicates; two moves sharing a
+  -- head but differing elsewhere do not.
+  check "an arity ladder is recognised"
+    (hasArityLadder ["id-hom ? ?", "id-hom ? ? ?"])
+  check "three rungs count too"
+    (hasArityLadder ["codomain-square ? ? ? ? ? ? ? ?", "codomain-square ? ? ? ? ? ? ? ? ?"])
+  check "moves differing other than in holes are not a ladder"
+    (not (hasArityLadder ["idJ (A, x, ?)", "idJ (A, z, ?)"]))
+  check "different heads are not a ladder"
+    (not (hasArityLadder ["first (first (funext ? ? ? ?))", "first (second (funext ? ? ? ?))"]))
+  check "a single move is not a ladder"
+    (not (hasArityLadder ["comp-is-segal ? ? ? ? ? ? ?"]))
+  check "no moves is not a ladder"
+    (not (hasArityLadder []))
+
   putStrLn "== input method: the caret is a character offset, not a UTF-16 one =="
   -- A textarea reports selectionStart in UTF-16 code units, while Data.Text (and
   -- so the input method) counts characters. Every abbreviation but one produces a
