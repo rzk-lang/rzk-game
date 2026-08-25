@@ -78,8 +78,8 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
   { envInfo     :: GameInfo -- ^ what the game says about itself (title, subtitle, links)
-  , envGameId   :: T.Text   -- ^ namespaces the player's saved progress ('storageKey')
-  , envTitle    :: T.Text
+  , envGameId   :: MisoString -- ^ namespaces the player's saved progress ('storageKey')
+  , envTitle    :: MisoString
   , envChapters :: [Chapter]
   , envSections :: [Section]
   , envSlots    :: [Slot]

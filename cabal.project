@@ -48,14 +48,14 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/dmjio/miso.git
-  tag: c17a4b2b9615d1814f7d32ba3a7f63d1da7cd455
+  tag: 8c7c33e1a15fe5db75820599a0f483f2efe3b32e
 
 -- The game does not need rzk's LSP server.
 package rzk
   flags: -lsp
 
 package miso
-  flags: +template-haskell +aeson
+  flags: +template-haskell +aeson +text
 
 allow-newer:
   all:base
@@ -63,4 +63,4 @@ allow-newer:
 if arch(wasm32)
   shared: True
 
-flags: +template-haskell +aeson
+flags: +template-haskell +aeson +text
