@@ -78,8 +78,8 @@ renderProseInto ref src = [js|renderInto(${ref},${src})|]
 -- into all navigation, view, and update functions via partial application.
 data GameEnv = GameEnv
   { envInfo     :: GameInfo -- ^ what the game says about itself (title, subtitle, links)
-  , envGameId   :: T.Text   -- ^ namespaces the player's saved progress ('storageKey')
-  , envTitle    :: T.Text
+  , envGameId   :: MisoString -- ^ namespaces the player's saved progress ('storageKey')
+  , envTitle    :: MisoString
   , envChapters :: [Chapter]
   , envSections :: [Section]
   , envSlots    :: [Slot]
@@ -1251,8 +1251,8 @@ updateModel env = \case
           io_ (saveProgress env s')
     recordSolved _ _ = pure ()
 
-viewModel :: GameEnv -> props -> Model -> View Model Action
-viewModel env _ m =
+viewModel :: GameEnv -> context -> props -> Model -> View context Model Action
+viewModel env _ _ m =
   H.div_ []
     [ H.header_ [ P.class_ "game" ]
         [ H.h1_ [] [ text (ms (envTitle env)) ]
@@ -1272,7 +1272,7 @@ viewModel env _ m =
 -- | A link to one item's own source file, when the game gives an @edit-url@
 -- template. This is what makes "the author takes pull requests" actionable: it
 -- lands the reader on the file to change, rather than on the repository root.
-editLink :: GameEnv -> T.Text -> View Model Action
+editLink :: GameEnv -> T.Text -> View context Model Action
 editLink env itemId = case editLinkFor (envInfo env) itemId of
   Nothing  -> text ""
   Just url -> H.p_ [ P.class_ "edit-link" ]
@@ -1284,7 +1284,7 @@ editLink env itemId = case editLinkFor (envInfo env) itemId of
 -- Content only. A checker crash is an engine or an rzk bug, not the author's to
 -- receive, so the crash panel keeps its own hardcoded tracker and the two are
 -- deliberately kept apart on the page.
-gameFooter :: GameEnv -> View Model Action
+gameFooter :: GameEnv -> View context Model Action
 gameFooter env = H.footer_ [ P.class_ "game-footer" ]
   ( contentLink <> [ H.span_ [ P.class_ "build-line" ] [ text (ms buildLine) ] ] )
   where
@@ -1304,7 +1304,7 @@ gameFooter env = H.footer_ [ P.class_ "game-footer" ]
 -- | A dismissible banner reporting the result of an import applied at the last
 -- reload (see 'applyPendingImport'): how many items were restored, or why the
 -- archive was rejected.
-importBanner :: Model -> View Model Action
+importBanner :: Model -> View context Model Action
 importBanner m = case m ^. importMsg of
   Nothing -> text ""
   Just r  -> H.div_ [ P.class_ (ms ("import-msg " <> cls :: T.Text)) ]
@@ -1320,7 +1320,7 @@ importBanner m = case m ^. importMsg of
 -- | A thin, sticky bar that keeps the level content in focus: it shows where the
 -- player is and the overall progress, with a toggle that reveals the full level
 -- map on demand. The map is hidden by default and collapses again after a jump.
-navHeader :: GameEnv -> Model -> View Model Action
+navHeader :: GameEnv -> Model -> View context Model Action
 navHeader env m =
   H.div_ [ P.class_ (ms ("mapbar-wrap" <> if open then " open" else "" :: T.Text)) ]
     [ H.div_ [ P.class_ "mapbar" ]
@@ -1352,7 +1352,7 @@ navHeader env m =
 -- game has a prose page with the 'helpAnchor' id, so the engine carries no hard
 -- dependency on any one game's content: a game without that page simply has no
 -- link. Clicking it jumps to the page like any other slot.
-helpLink :: GameEnv -> View Model Action
+helpLink :: GameEnv -> View context Model Action
 helpLink env = case anchorSlotIx env helpAnchor of
   Just i  -> H.button_ [ P.class_ "map-help", H.onClick (SelectSlot i)
                        , P.title_ "How holes work" ]
@@ -1380,7 +1380,7 @@ chapterTitleOf env sid =
 -- with its progress count and a row of slot buttons. Shown only when the map is
 -- open. Navigation stays free — every slot is always reachable; locking only
 -- affects a puzzle page.
-levelMap :: GameEnv -> Model -> View Model Action
+levelMap :: GameEnv -> Model -> View context Model Action
 levelMap env m =
   H.div_ [ P.class_ "sections" ]
     (concatMap chapterBlock (envChapters env) ++ [ progressControls m ])
@@ -1423,7 +1423,7 @@ levelMap env m =
 -- | Export / import / reset controls, at the foot of the level map. Export and
 -- import move the whole progress archive between devices or back it up; reset
 -- erases it, behind an in-place confirmation so a stray tap cannot wipe progress.
-progressControls :: Model -> View Model Action
+progressControls :: Model -> View context Model Action
 progressControls m =
   H.div_ [ P.class_ "progress-controls" ]
     [ H.button_ [ P.class_ "prog-btn", H.onClick ExportProgress ]
@@ -1447,7 +1447,7 @@ progressControls m =
 -- number in the corner. State — current, viewed/solved, locked — is carried by
 -- the tile's classes; the full label lives in the @title@ tooltip, so the map
 -- stays succinct as sections and items grow. A locked tile shows a padlock.
-slotButton :: GameEnv -> Model -> (Int, Slot) -> View Model Action
+slotButton :: GameEnv -> Model -> (Int, Slot) -> View context Model Action
 slotButton env m (i, s) =
   H.button_
     [ H.onClick (SelectSlot i)
@@ -1494,29 +1494,29 @@ slotButton env m (i, s) =
 -- so swapping one role icon for another (e.g. a puzzle that becomes locked) only
 -- changes attributes — miso never restructures the SVG subtree. Sizing comes from
 -- CSS (@.tile svg@), so the per-icon @viewBox@ just frames the path.
-svgIcon :: MisoString -> MisoString -> View Model Action
+svgIcon :: MisoString -> MisoString -> View context Model Action
 svgIcon vb d =
   S.svg_ [ SP.viewBox_ vb, SP.fill_ "currentColor" ] [ S.path_ [ SP.d_ d ] ]
 
 -- text lines (a document)
-icoProse :: View Model Action
+icoProse :: View context Model Action
 icoProse = svgIcon "0 0 24 24" "M5 6 H19 V8.5 H5 Z M5 10.75 H19 V13.25 H5 Z M5 15.5 H14 V18 H5 Z"
 
 -- a node (a filled disc)
-icoCore :: View Model Action
+icoCore :: View context Model Action
 icoCore = svgIcon "0 0 24 24" "M12 7 A5 5 0 1 0 12 17 A5 5 0 1 0 12 7 Z"
 
 -- a diamond (a checkpoint)
-icoPretest :: View Model Action
+icoPretest :: View context Model Action
 icoPretest = svgIcon "0 0 24 24" "M12 3 L21 12 L12 21 L3 12 Z"
 
 -- a five-point star
-icoStar :: View Model Action
+icoStar :: View context Model Action
 icoStar = svgIcon "0 0 24 24"
   "M12 2 L14.7 8.6 L21.8 9.2 L16.4 13.9 L18 20.8 L12 17.1 L6 20.8 L7.6 13.9 L2.2 9.2 L9.3 8.6 Z"
 
 -- a padlock (Bootstrap Icons "lock-fill", MIT-licensed, a single filled path)
-icoLock :: View Model Action
+icoLock :: View context Model Action
 icoLock = svgIcon "0 0 16 16"
   "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 1-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 1-2-2"
 
@@ -1539,7 +1539,7 @@ overallExtras env m =
 -- bonus puzzle is done. It sits beside the required count, which keeps defining
 -- completion, so finishing optional work is acknowledged without inflating the
 -- "must do" denominator.
-extrasBadge :: (Int, Int) -> [View Model Action]
+extrasBadge :: (Int, Int) -> [View context Model Action]
 extrasBadge (_, 0)   = []
 extrasBadge (xd, xt) =
   [ H.span_ [ P.class_ (ms ("extra-count" <> if xd == xt then " done" else "" :: T.Text)) ]
@@ -1547,7 +1547,7 @@ extrasBadge (xd, xt) =
 
 -- | A section breadcrumb shown atop each slot page: the section title and its
 -- "k / n in this section" count (current-section progress).
-breadcrumb :: GameEnv -> Model -> T.Text -> View Model Action
+breadcrumb :: GameEnv -> Model -> T.Text -> View context Model Action
 breadcrumb env m sid =
   H.p_ [ P.class_ "breadcrumb" ]
     ( [ text (ms (title <> " — "))
@@ -1562,7 +1562,7 @@ breadcrumb env m sid =
 
 -- | A prose pseudo-level page: the rendered text, a viewed mark, and a section
 -- "complete" badge when reaching it finishes the section.
-proseSlotView :: GameEnv -> Model -> T.Text -> Prose -> [View Model Action]
+proseSlotView :: GameEnv -> Model -> T.Text -> Prose -> [View context Model Action]
 proseSlotView env m sid p =
   [ breadcrumb env m sid
   , H.h2_ []
@@ -1595,7 +1595,7 @@ roleLabel = \case
 
 -- | A puzzle page: goal, prelude, then either the editor (with moves, buttons,
 -- result, and conclusion) or a lock panel. Pre-test puzzles add a self-assessment.
-puzzleSlotView :: GameEnv -> Model -> T.Text -> Int -> PuzzleItem -> [View Model Action]
+puzzleSlotView :: GameEnv -> Model -> T.Text -> Int -> PuzzleItem -> [View context Model Action]
 puzzleSlotView env m sid ix z =
   [ breadcrumb env m sid
   , H.h2_ [] ( [ text (ms (titleMark <> levelTitle lvl <> roleSuffix)) ]
@@ -1655,7 +1655,7 @@ puzzleSlotView env m sid ix z =
 -- | The "requires typing" chip shown beside a level's title (like the ★ extra
 -- badge): a level that cannot be solved by tapping moves alone, so the player
 -- must write part of the proof by hand.
-typingBadge :: View Model Action
+typingBadge :: View context Model Action
 typingBadge =
   H.span_ [ P.class_ "typing-badge"
           , P.title_ "This level needs some typing — it can't be solved by taps alone." ]
@@ -1663,7 +1663,7 @@ typingBadge =
 
 -- | The self-assessment for a pre-test puzzle: two buttons, the current choice
 -- highlighted, and a remediation box if the player said they are not familiar.
-pretestControls :: GameEnv -> Model -> PuzzleItem -> [View Model Action]
+pretestControls :: GameEnv -> Model -> PuzzleItem -> [View context Model Action]
 pretestControls env m z
   | puzzleRole z /= PreTest = []
   | otherwise =
@@ -1693,7 +1693,7 @@ pretestControls env m z
 -- | The lock panel shown in place of the editor when a prerequisite is not yet
 -- met. It names the unmet prerequisites, offers a jump to each (and any
 -- remediation), and an "Unlock anyway" escape so a player is never trapped.
-lockPanel :: GameEnv -> Model -> PuzzleItem -> View Model Action
+lockPanel :: GameEnv -> Model -> PuzzleItem -> View context Model Action
 lockPanel env m z =
   H.div_ [ P.class_ "locked" ]
     ( [ H.p_ [] [ text (ms msg) ]
@@ -1715,7 +1715,7 @@ lockPanel env m z =
 
 -- | A box of remediation links. External targets are anchors; in-game targets
 -- are buttons that navigate to the relevant slot.
-remedyBox :: GameEnv -> T.Text -> [Remedy] -> View Model Action
+remedyBox :: GameEnv -> T.Text -> [Remedy] -> View context Model Action
 remedyBox env heading rs
   | null rs   = text ""
   | otherwise =
@@ -1723,7 +1723,7 @@ remedyBox env heading rs
         ( H.p_ [ P.class_ "remedy-head" ] [ text (ms heading) ]
         : map (remedyLink env) rs )
 
-remedyLink :: GameEnv -> Remedy -> View Model Action
+remedyLink :: GameEnv -> Remedy -> View context Model Action
 remedyLink env (Remedy lbl tgt) = case tgt of
   ToExternal url ->
     H.a_ [ P.href_ (ms url), P.target_ "_blank", P.class_ "remedy-link" ]
@@ -1749,7 +1749,7 @@ puzzleSlotIndex env pid = fst <$> find (isPuz . snd) (zip [0 ..] (envSlots env))
 
 -- | A "section complete" badge, shown on a prose page once every required slot
 -- of the section is done (so a summary block doubles as a completion marker).
-sectionDoneBadge :: GameEnv -> Model -> T.Text -> View Model Action
+sectionDoneBadge :: GameEnv -> Model -> T.Text -> View context Model Action
 sectionDoneBadge env m sid
   | sectionComplete (envSlots env) (m ^. solved) (m ^. viewed) (m ^. pretest) sid =
       H.p_ [ P.class_ "section-complete" ]
@@ -1762,7 +1762,7 @@ sectionDoneBadge env m sid
 -- the rendered text reproduces the source exactly. Shared by the editor's
 -- highlight layer and the prelude panel, both of which wrap each line in its own
 -- element to carry a per-line class.
-intersperseNewlines :: [View Model Action] -> [View Model Action]
+intersperseNewlines :: [View context Model Action] -> [View context Model Action]
 intersperseNewlines = \case
   []       -> []
   [v]      -> [v]
@@ -1777,7 +1777,7 @@ intersperseNewlines = \case
 -- 'annotatedPrelude'), so a player reading @#data Void@ can see that
 -- @rec-Void@ exists and what it takes. Those lines are dimmed, since they are
 -- rzk's words rather than the author's, and the source is otherwise verbatim.
-preludeView :: Model -> Level -> View Model Action
+preludeView :: Model -> Level -> View context Model Action
 preludeView m lvl =
   H.details_ [ P.class_ "prelude-wrap" ]
     [ H.summary_ [] [ text "Prelude (given)" ]
@@ -1838,7 +1838,7 @@ editDecoder = Decoder
       (,) <$> o .: "value" <*> o .:? "selectionStart")
   }
 
-editorView :: MisoString -> [(Int, Maybe Int)] -> View Model Action
+editorView :: MisoString -> [(Int, Maybe Int)] -> View context Model Action
 editorView code errSpots =
   H.div_ [ P.class_ "editor-wrap" ]
     [ H.pre_ [ P.class_ "editor-hl" ]
@@ -1851,7 +1851,7 @@ editorView code errSpots =
     , H.textarea_
         [ P.class_ "editor"
         , P.value_ code
-        , on "input" editDecoder (\(v, c) _ -> SetEditable v c)
+        , on "input" editDecoder (\(v, c) _ _ -> SetEditable v c)
         ]
     ]
   where
@@ -1897,7 +1897,7 @@ splitToksAt n (t@(Tok cls txt) : ts)
 -- has to know it is here at all; showing the table as it is used is how they
 -- find out. Rows are read-only — clicking one would take the focus (and the
 -- caret) out of the editor, which is the opposite of helpful mid-word.
-abbrevView :: Model -> View Model Action
+abbrevView :: Model -> View context Model Action
 abbrevView m = case m ^. caret >>= pendingAbbrev (fromMisoString (m ^. editable)) of
   Nothing  -> text ""
   Just key -> case take abbrevRowLimit (completions key) of
@@ -1923,7 +1923,7 @@ abbrevRowLimit = 12
 -- | The smart-inventory moves for the focused hole (the first unsolved one),
 -- derived from the current result. There is nothing to refine when the proof is
 -- solved, errs, or has not been checked.
-movesView :: Level -> Model -> View Model Action
+movesView :: Level -> Model -> View context Model Action
 movesView lvl m =
   case m ^. result of
     Holes (h : _) -> case effectiveMovesMode (m ^. showMoves) lvl h of
@@ -1955,7 +1955,7 @@ movesView lvl m =
 -- give), then the filler term rendered with the same syntax highlighting as the
 -- editor. Splitting the two keeps the kind and the term glanceable, rather than
 -- running them together into one contiguous string.
-moveButton :: MoveKind -> T.Text -> View Model Action
+moveButton :: MoveKind -> T.Text -> View context Model Action
 moveButton kind ins =
   H.button_ [ P.class_ "refine", H.onClick (Refine ins) ]
     [ H.span_ [ P.class_ (ms ("move-kind " <> kindClass)) ] [ text (ms kindLabel) ]
@@ -1982,7 +1982,7 @@ moveButton kind ins =
 -- the map's own controls: the level tiles, and the export / import / reset row at
 -- its foot. Opening the map is navigation, not editing, so the bar drops back
 -- into flow and nothing is covered.
-actionBar :: Model -> View Model Action
+actionBar :: Model -> View context Model Action
 actionBar m =
   H.div_ [ P.class_ (ms ("action-bar" <> if m ^. mapOpen then " unpinned" else "" :: T.Text)) ]
     [ H.div_ [ P.class_ "buttons" ]
@@ -2008,7 +2008,7 @@ actionBar m =
 -- name and type in monospace and its optional synopsis in regular prose; the
 -- type is the entry's 'invType' override if given, else looked up from the
 -- prelude by name ('inventoryType'). Hidden on a level with an empty inventory.
-inventoryView :: Level -> View Model Action
+inventoryView :: Level -> View context Model Action
 inventoryView lvl
   | null (levelInventory lvl) = text ""
   | otherwise =
@@ -2024,7 +2024,7 @@ inventoryView lvl
     -- The name + resolved type in a monospace slot, then the synopsis (if any)
     -- in a prose slot. The two slots are visually distinct (see the CSS), so the
     -- signature reads as code and the note as prose.
-    entryView :: InventoryEntry -> [View Model Action]
+    entryView :: InventoryEntry -> [View context Model Action]
     entryView e =
          [ H.span_ [ P.class_ "inv-sig" ] [ text (ms sig) ] ]
       <> [ H.span_ [ P.class_ "inv-syn" ] [ text (ms (" — " <> s)) ]
@@ -2044,7 +2044,7 @@ inventoryView lvl
 -- blocking red box (the proof does not count until they are gone). On a non-gated
 -- level it is a soft hint: the proof still counts, but the intended solution does
 -- without these, so a shorter route exists. Empty when there are no violations.
-gateView :: Level -> CheckResult -> [T.Text] -> View Model Action
+gateView :: Level -> CheckResult -> [T.Text] -> View context Model Action
 gateView lvl res violations
   | null violations = text ""
   | otherwise       = gateBox gated prefix violations suffix
@@ -2064,7 +2064,7 @@ gateView lvl res violations
 -- 'forbiddenViolations'). Hard red on a gated level (the solve is withheld until
 -- they are gone), soft amber otherwise. The moves panel already hides these, so
 -- this fires only when the player types one directly. Empty when there are none.
-forbiddenGateView :: Level -> [T.Text] -> View Model Action
+forbiddenGateView :: Level -> [T.Text] -> View context Model Action
 forbiddenGateView lvl violations
   | null violations = text ""
   | otherwise       = gateBox gated prefix violations suffix
@@ -2082,14 +2082,14 @@ forbiddenGateView lvl violations
 -- supplying its own @prefix@ / @suffix@ wording. The offending names sit between
 -- them, each rendered in monospace ('monoNames') so a lemma or builtin name reads
 -- as code, not prose.
-gateBox :: Bool -> T.Text -> [T.Text] -> T.Text -> View Model Action
+gateBox :: Bool -> T.Text -> [T.Text] -> T.Text -> View context Model Action
 gateBox gated prefix names suffix =
   H.div_ [ P.class_ (ms (if gated then "gate gate-hard" else "gate gate-soft" :: T.Text)) ]
     [ H.p_ [] (text (ms prefix) : monoNames names <> [ text (ms suffix) ]) ]
 
 -- | A comma-separated list of names, each in a monospace span, as inline nodes
 -- for a gate notice.
-monoNames :: [T.Text] -> [View Model Action]
+monoNames :: [T.Text] -> [View context Model Action]
 monoNames = go
   where
     go []       = []
@@ -2109,7 +2109,7 @@ focusedGoal _               = Nothing
 -- it never surfaces a contextual hint out of context — so it disappears once
 -- every plain hint is showing (and on a solved level, where hints are moot).
 -- Hidden entirely on a level with no hints.
-hintsView :: Model -> Level -> View Model Action
+hintsView :: Model -> Level -> View context Model Action
 hintsView m lvl
   | null hs   = text ""
   | otherwise =
@@ -2151,7 +2151,7 @@ hintsView m lvl
 -- main step as a second button, so both places to go are visible and the player
 -- chooses. ('nextIncomplete' can also land /on/ the extra by wrapping around once
 -- everything required is done; the guard keeps that from being offered twice.)
-advanceView :: GameEnv -> Model -> Bool -> View Model Action
+advanceView :: GameEnv -> Model -> Bool -> View context Model Action
 advanceView env m accepted
   | accepted =
       case nextIncomplete env m of
@@ -2203,7 +2203,7 @@ nextIncompleteFrom env cur solvedIxs viewedIds answers = find incomplete order
 -- | A linear navigation bar over all slots: previous, the current slot's label,
 -- then next. Adjacent navigation, disabled at the ends; the picker above remains
 -- the way to jump anywhere.
-navBar :: GameEnv -> Model -> View Model Action
+navBar :: GameEnv -> Model -> View context Model Action
 navBar env m =
   H.div_ [ P.class_ "nav" ]
     [ navButton "prev" "← Previous: " (cur - 1) (cur > 0)
@@ -2264,7 +2264,7 @@ crashReport env lvl editable err = T.unlines
 -- which says nothing about where the bracket should go, and the offending
 -- bracket is drawn in the editor above ('markUnmatched') — the count is the
 -- pointer to it.
-checkStatusView :: Model -> View Model Action
+checkStatusView :: Model -> View context Model Action
 checkStatusView m = H.div_ [] (parenNote <> staleNote)
   where
     notChecked = case m ^. result of NotChecked -> True; _ -> False
@@ -2281,7 +2281,7 @@ checkStatusView m = H.div_ [] (parenNote <> staleNote)
     message u x = "● Unbalanced brackets: " <> T.intercalate " and " (parts u x) <> "."
     parts u x = [ tshow u <> " unclosed (" | u > 0 ] <> [ tshow x <> " stray )" | x > 0 ]
 
-resultView :: GameEnv -> Level -> MisoString -> CheckResult -> View Model Action
+resultView :: GameEnv -> Level -> MisoString -> CheckResult -> View context Model Action
 resultView env lvl editable = \case
   NotChecked     -> H.pre_ [] [ text "(press Check)" ]
   ParseError e _ -> H.pre_ [ P.class_ "err" ] [ text (ms ("Parse error:\n" <> e)) ]
@@ -2328,7 +2328,7 @@ resultView env lvl editable = \case
 
 -- | Render a snippet of rzk as syntax-highlighted spans, with the editor's
 -- tokeniser (used for the failed-check propositions).
-rzkSpans :: T.Text -> [View Model Action]
+rzkSpans :: T.Text -> [View context Model Action]
 rzkSpans t =
   [ H.span_ [ P.class_ (ms (tokClassName cls)) ] [ text (ms txt) ]
   | Tok cls txt <- highlight t ]
@@ -2344,7 +2344,7 @@ checkFailHeading n m =
 
 -- | The level conclusion prose. The div is keyed by slot, so it is recreated on
 -- navigation (and the prose re-injected); it is revealed once the level solves.
-conclusionView :: Model -> Level -> Bool -> View Model Action
+conclusionView :: Model -> Level -> Bool -> View context Model Action
 conclusionView m lvl accepted =
   H.div_ [ P.class_ (ms cls)
          , key_ (ms ("concl-" <> show (_slotIx m)))
@@ -2356,7 +2356,7 @@ conclusionView m lvl accepted =
 
 -- | Render one hole as a stack of labelled panels: goal, then any local
 -- hypotheses, cube variables, and tope assumptions.
-holeView :: HoleView -> View Model Action
+holeView :: HoleView -> View context Model Action
 holeView HoleView{..} =
   H.div_ [ P.class_ "hole" ] $
     [ H.div_ [ P.class_ "hole-head" ]
