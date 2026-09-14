@@ -39,17 +39,11 @@ class JSValManager {
 // To benchmark different setImmediate() implementations in the
 // browser, use https://github.com/jphpsf/setImmediate-shim-demo as a
 // starting point.
-const setImmediate = await (async () => {
-  // node, bun, or other scripts might have set this up in the browser
+const setImmediate = (() => {
+  // node, deno, bun, or other scripts might have set this up in the
+  // browser
   if (globalThis.setImmediate) {
     return globalThis.setImmediate;
-  }
-
-  // deno
-  if (globalThis.Deno) {
-    try {
-      return (await import("node:timers")).setImmediate;
-    } catch {}
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/postTask
@@ -98,36 +92,36 @@ newJSVal: (v) => __ghc_wasm_jsffi_jsval_manager.newJSVal(v),
 getJSVal: (k) => __ghc_wasm_jsffi_jsval_manager.getJSVal(k),
 freeJSVal: (k) => __ghc_wasm_jsffi_jsval_manager.freeJSVal(k),
 scheduleWork: () => setImmediate(__exports.rts_schedulerLoop),
-ZC0ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziJSONZC: ($1) => {return globalThis.miso.typeOf($1);},
-ZC2ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziJSONZC: ($1) => {return JSON.stringify($1);},
-ZC0ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1.length},
-ZC4ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return requestAnimationFrame($1);},
-ZC5ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1,$2) => {return $2[$1]},
-ZC6ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1},
-ZC7ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1},
-ZC8ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1},
-ZC10ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1,$2) => {return $2[$1]},
-ZC11ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: () => {return {}},
-ZC13ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1,$2,$3) => ($3[$1]=$2),
-ZC15ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1,$2,$3) => {return $1.apply($2, $3);},
-ZC16ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return Object.keys($1);},
-ZC22ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC21ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC($1, ...args)),
-ZC30ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC29ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC($1, ...args)),
-ZC32ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC31ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC($1, ...args)),
-ZC36ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC35ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC($1, ...args)),
-ZC38ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC37ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC($1, ...args)),
-ZC42ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: () => {return globalThis},
-ZC43ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: () => {return null;},
-ZC44ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1 === null;},
-ZC45ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1 === undefined;},
-ZC51ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1,$2) => ($1.push($2)),
-ZC52ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: () => {return [];},
-ZC53ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1},
-ZC54ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {return $1},
-ZC55ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziDSLziFFIZC: ($1) => {if ($1 === 0.0) return false;
+ZC0ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziJSONZC: ($1) => {return globalThis.miso.typeOf($1);},
+ZC2ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziJSONZC: ($1) => {return JSON.stringify($1);},
+ZC0ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1.length},
+ZC4ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return requestAnimationFrame($1);},
+ZC5ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1,$2) => {return $2[$1]},
+ZC6ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1},
+ZC7ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1},
+ZC8ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1},
+ZC10ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1,$2) => {return $2[$1]},
+ZC11ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: () => {return {}},
+ZC13ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1,$2,$3) => ($3[$1]=$2),
+ZC15ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1,$2,$3) => {return $1.apply($2, $3);},
+ZC16ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return Object.keys($1);},
+ZC22ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC21ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC($1, ...args)),
+ZC30ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC29ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC($1, ...args)),
+ZC32ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC31ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC($1, ...args)),
+ZC36ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC35ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC($1, ...args)),
+ZC38ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => ((...args) => __exports.ghczuwasmzujsffiZC37ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC($1, ...args)),
+ZC42ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: () => {return globalThis},
+ZC43ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: () => {return null;},
+ZC44ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1 === null;},
+ZC45ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1 === undefined;},
+ZC51ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1,$2) => ($1.push($2)),
+ZC52ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: () => {return [];},
+ZC53ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1},
+ZC54ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {return $1},
+ZC55ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziDSLziFFIZC: ($1) => {if ($1 === 0.0) return false;
 return true;},
-ZC0ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziRuntimeZC: () => {// ts/miso/util.ts
-var version = "1.13.0.0";
+ZC0ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziRuntimeZC: () => {// ts/miso/util.ts
+var version = "1.14.0.0";
 function onBTS() {
   return typeof __BACKGROUND__ !== "undefined" && __BACKGROUND__;
 }
@@ -577,7 +571,7 @@ function callDestroyedRecursive(c) {
 }
 function callDestroyed(c) {
   if (c.type === 1 /* VNode */ && c.onDestroyed)
-    c.onDestroyed();
+    c.onDestroyed(c.domRef);
   if (c.type === 0 /* VComp */)
     unmountComponent(c);
 }
@@ -587,7 +581,7 @@ function callBeforeDestroyed(c) {
       break;
     case 1 /* VNode */:
       if (c.onBeforeDestroyed)
-        c.onBeforeDestroyed();
+        c.onBeforeDestroyed(c.domRef);
       break;
     default:
       break;
@@ -993,6 +987,12 @@ function delegator(mount, events, getVTree, debug, context) {
 }
 function listener(e, mount, getVTree, debug, context) {
   getVTree(function(vtree) {
+    if (!vtree) {
+      if (debug) {
+        console.warn("Event received before vtree was mounted, dropping", e);
+      }
+      return;
+    }
     if (Array.isArray(e)) {
       for (const key of e) {
         dispatch(key, vtree, mount, debug, context);
@@ -1505,8 +1505,8 @@ globalThis["miso"] = {
   }
 };
 },
-ZC1ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCMisoziRuntimeZC: () => {// ts/miso/util.ts
-var version = "1.13.0.0";
+ZC1ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCMisoziRuntimeZC: () => {// ts/miso/util.ts
+var version = "1.14.0.0";
 function onBTS() {
   return typeof __BACKGROUND__ !== "undefined" && __BACKGROUND__;
 }
@@ -1956,7 +1956,7 @@ function callDestroyedRecursive(c) {
 }
 function callDestroyed(c) {
   if (c.type === 1 /* VNode */ && c.onDestroyed)
-    c.onDestroyed();
+    c.onDestroyed(c.domRef);
   if (c.type === 0 /* VComp */)
     unmountComponent(c);
 }
@@ -1966,7 +1966,7 @@ function callBeforeDestroyed(c) {
       break;
     case 1 /* VNode */:
       if (c.onBeforeDestroyed)
-        c.onBeforeDestroyed();
+        c.onBeforeDestroyed(c.domRef);
       break;
     default:
       break;
@@ -2372,6 +2372,12 @@ function delegator(mount, events, getVTree, debug, context) {
 }
 function listener(e, mount, getVTree, debug, context) {
   getVTree(function(vtree) {
+    if (!vtree) {
+      if (debug) {
+        console.warn("Event received before vtree was mounted, dropping", e);
+      }
+      return;
+    }
     if (Array.isArray(e)) {
       for (const key of e) {
         dispatch(key, vtree, mount, debug, context);
@@ -2884,10 +2890,10 @@ globalThis["miso"] = {
   }
 };
 },
-ZC15ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCDataziJSStringZC: ($1,$2) => ((new TextDecoder('utf-8', {fatal: true})).decode(new Uint8Array(__exports.memory.buffer, $1, $2))),
-ZC16ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCDataziJSStringZC: ($1,$2) => ((new Uint8Array(__exports.memory.buffer, $2, $1.byteLength)).set($1)),
-ZC17ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCDataziJSStringZC: ($1) => ($1.byteLength),
-ZC18ZCmisozm1zi13zi0zi0zm2dc2026e3384017c6280b8b1731f03686e140feda38ee4cb077e792694ae6058ZCDataziJSStringZC: ($1) => ((new TextEncoder()).encode($1)),
+ZC15ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCDataziJSStringZC: ($1,$2) => ((new TextDecoder('utf-8', {fatal: true})).decode(new Uint8Array(__exports.memory.buffer, $1, $2))),
+ZC16ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCDataziJSStringZC: ($1,$2) => ((new Uint8Array(__exports.memory.buffer, $2, $1.byteLength)).set($1)),
+ZC17ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCDataziJSStringZC: ($1) => ($1.byteLength),
+ZC18ZCmisozm1zi14zi0zi0zmb642e1309f1fc34dde7dcb81db17af3de70be278058a0d9fa4003deb88ea5423ZCDataziJSStringZC: ($1) => ((new TextEncoder()).encode($1)),
 ZC0ZCghczminternalZCGHCziInternalziWasmziPrimziExportsZC: ($1,$2) => ($1.reject(new WebAssembly.RuntimeError($2))),
 ZC19ZCghczminternalZCGHCziInternalziWasmziPrimziExportsZC: ($1) => ($1.resolve()),
 ZC20ZCghczminternalZCGHCziInternalziWasmziPrimziExportsZC: ($1) => {$1.throwTo = () => {};},
