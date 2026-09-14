@@ -25,3 +25,6 @@ notes/
 
 # Phase 0 de-risking spike (kept locally, not part of the engine)
 spikes/
+
+# Editor backups (emacs, undo-tree)
+*~
