@@ -52,8 +52,15 @@ format-game:
 	cabal --project-file=cabal.project.native run -w $(NATIVE_GHC) -v0 exe:rzk-game-format
 
 # Shrink the module (run after build).
+#
+# Deliberately no -all: that switch turns on every binaryen proposal, including
+# ones no browser ships. binaryen 132 (pulled in by the Sept 2026 ghc-wasm-meta
+# bump) emits the compact import section under -all, which Chrome rejects at
+# instantiation with "Invalid import kind 127". Plain -O2 uses the feature set
+# wasm-ld recorded in the module's own target_features section — exactly what
+# the module needs, and nothing experimental.
 optim:
-	wasm-opt -all -O2 public/app.wasm -o public/app.wasm
+	wasm-opt -O2 public/app.wasm -o public/app.wasm
 	wasm-tools strip -o public/app.wasm public/app.wasm
 
 serve:
