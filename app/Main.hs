@@ -1935,8 +1935,17 @@ movesView lvl m =
   where
     muted t = H.p_ [ P.class_ "muted" ] [ text t ]
     panel []    = muted "No moves apply to this hole — type the next step."
-    panel moves = H.div_ [ P.class_ "actions" ]
+    panel moves = H.div_ [ P.class_ "actions" ] $
       [ moveButton kind ins | (kind, ins) <- moves ]
+      -- Why a move can appear twice. rzk offers a lemma at each number of
+      -- arguments that fits, so the same name shows up applied to more holes,
+      -- the extra ones standing for a cube variable or an endpoint. Said only
+      -- when it is actually happening, so it does not become wallpaper.
+      <> [ H.p_ [ P.class_ "moves-note" ]
+             [ text "A move repeated with more holes is the same lemma applied \
+                    \to further arguments — the extra ones are usually a cube \
+                    \variable or an endpoint. Pick the one whose holes you can fill." ]
+         | hasArityLadder (map snd moves) ]
     offNote = H.p_ [ P.class_ "muted moves-off" ]
       [ text "Moves are hidden here — write the proof yourself." ]
     -- The obscure nudge: acknowledge how many moves fit without naming them, and

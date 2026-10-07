@@ -13,24 +13,27 @@ games.
 
 ## The Local Loop
 
-First, install the toolchain. The reproducible route uses
-[Nix](https://nixos.org/download/) with flakes enabled (the
-[Determinate Systems installer](https://github.com/DeterminateSystems/nix-installer)
-enables them by default). Running `nix develop` then provides
-`wasm32-wasi-cabal` and the rest of the toolchain. Without Nix, install the WASM
-toolchain via
-[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta)
-(FLAVOUR 9.12), then run `source ~/.ghc-wasm/env`. Then, after editing files
-under `game/`, run two targets.
+With [Nix](https://nixos.org/download/) and flakes enabled, use the default shell
+for the WebAssembly build and the native shell for bundling. Build the web app
+once, then bundle the game and serve it:
 
 ```sh
-make bundle      # parse game/ into public/game.json (fast, native)
-make serve       # serve public/ locally and play
+nix develop --command make build
+nix develop .#native --command make bundle
+nix develop --command make serve
 ```
 
+After editing `game/`, rerun the bundle and serve commands. After every
+`make build`, bundle again: rebuilding the web app removes `public/game.json`.
+
+Without Nix, install the WebAssembly toolchain via
+[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta)
+(FLAVOUR 9.12) and run `source ~/.ghc-wasm/env`. Also install native GHC 9.8 or
+newer, Cabal and Node.js. Run `make build` once, then `make bundle` and `make serve`.
+
 `make bundle` reparses `game.yaml` and each level file's front-matter. When a
-file fails to parse, it reports the first one. A full rebuild of the web app is
-rarely needed; `make all` does it.
+file fails to parse, it reports the first one. With both toolchains available,
+`make all` rebuilds the web app and bundles the game.
 
 One further target helps while authoring. `make format-game` rewrites the
 `rzk prelude` blocks in place with rzk's canonical formatting. Run it when a
@@ -194,7 +197,8 @@ The front-matter holds the intrinsic metadata.
   check. It defaults to `false`.
 - `moves`, `autohide-single-move`, and `requires-typing` control the Moves panel
   and the "requires typing" badge. See *The Moves panel* below. All three are
-  optional and default off.
+  optional. `moves` defaults to `on`, `autohide-single-move` to `false`, and an
+  unset `requires-typing` uses the automatic classification.
 
 The body has these roles of fenced rzk block, with surrounding prose.
 
@@ -275,12 +279,10 @@ one: an `#assume`d or `#variable` lemma shows no type at all (only `#def` and
 `(A : U) → (B : U) → Equiv (A = B) (Equiv A B)`. A bare string entry is read as
 the name alone.
 
-By default the inventory is informative only. After a check, the engine scans the
-identifiers the proof body uses, keeps those the prelude defines, and reports any
-that are not granted. This is a soft amber notice, a heads-up rather than a
-blocker. Set `gated: true` to make a violation hard. Then a proof that uses an
-ungranted prelude lemma does not count as solved, even when it type-checks, and
-the success is withheld until only granted moves are used.
+After a check, the engine scans proof bodies for prelude-defined names. A name
+is allowed if it appears in the inventory or in a reference-solution proof body.
+Other names produce an amber notice by default. With `gated: true`, they prevent
+the proof from counting as solved, even when it type-checks.
 
 The `forbidden` list bans rzk's built-in eliminators, which the inventory cannot
 reach because they are not prelude definitions. List any of `idJ`, `first`,
@@ -290,10 +292,11 @@ notice by default, or a hard failure under `gated: true`.
 
 Only proof bodies are scanned, the text after each `:=`, never the type
 signatures. So the type formers a goal mentions are never flagged. Only
-prelude-defined names are kept, so local hypotheses and keywords are ignored. A
-level with an empty inventory gates nothing. Importantly, before turning `gated`
-on, check that the reference solution uses only granted names and no forbidden
-move, since a gated level whose solution trips its own gate cannot be solved.
+prelude-defined names are kept, so local hypotheses and keywords are ignored.
+An empty inventory disables inventory gating; forbidden moves are still checked.
+Before enabling `gated`, check that the reference solution uses no forbidden move.
+Names used by the reference solution are automatically allowed by the inventory
+gate.
 
 ## Behaviour checks
 
@@ -314,11 +317,11 @@ checks:
   label: negation is involutive at true
 ```
 
-A bare string is the proposition, proved by `refl`. Because `#data` computation
-is definitional, a `refl` check pins behaviour exactly: `not true = false` holds
-only when the player's `not` actually computes `true` to `false`, so the constant
-`\ _ → false` is rejected. The object form `{ prop, by }`, above, gives an
-explicit proof term and an optional `label` (see below). `by` defaults to `refl`;
+A bare string is the proposition, proved by `refl`. For `#data` computation,
+`not true = false` checks the result at `true`. The constant `\ _ → false` passes
+that check but fails the second check above, `not (not true) = true`. The object
+form `{ prop, by }` gives an explicit proof term and an optional `label` (see
+below). `by` defaults to `refl`;
 give a different term only when `refl` is not enough — for instance naming a lemma
 the prelude grants, `by: plus-comm 1 2`. The proof is checked with the player's
 definition and the prelude in scope. A front-matter check is a closed

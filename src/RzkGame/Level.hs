@@ -22,6 +22,7 @@ module RzkGame.Level
   , checkLevel
   , holeActions
   , allowedActions
+  , hasArityLadder
   , effectiveMovesMode
   , requiresTyping
   , tapThroughReference
@@ -42,7 +43,7 @@ module RzkGame.Level
 import           Control.DeepSeq      (NFData, force)
 import           Control.Exception    (SomeException, evaluate, try)
 import           Data.Char            (isDigit, isSpace)
-import           Data.List            (nub)
+import           Data.List            (groupBy, nub, sortOn)
 import           Data.Maybe           (fromMaybe, mapMaybe, maybeToList)
 import           Data.String          (fromString)
 import           Data.Text            (Text)
@@ -763,6 +764,31 @@ moveHead :: Text -> Text
 moveHead ins = case T.words (T.strip ins) of
   (w : _) -> w
   []      -> ""
+
+-- | Whether the offered moves include an /arity ladder/: two or more moves that
+-- read identically except for how many trailing holes they carry, e.g.
+-- @id-hom ? ?@ beside @id-hom ? ? ?@, or @codomain-square@ offered with eight,
+-- nine and ten.
+--
+-- These are the repetitions that read as duplicates. rzk offers a lemma applied
+-- to each number of arguments that fits, and the longer forms apply the result
+-- further, usually to a cube variable or an endpoint. Two moves sharing a head
+-- but differing elsewhere (@idJ (A, x, …)@ beside @idJ (A, z, …)@) are visibly
+-- different and are not counted.
+--
+-- The UI shows a note when this holds, so the player is not left guessing why a
+-- move appears twice. Reported by Emily Riehl, who worked it out unaided and
+-- suggested the game say so.
+hasArityLadder :: [Text] -> Bool
+hasArityLadder ins = any ladder (groupBy sameShape (sortOn shapeOf ins))
+  where
+    -- a move's shape: its text with every hole dropped, so two moves differing
+    -- only in trailing holes fall together
+    shapeOf = T.unwords . filter (/= "?") . T.words
+    sameShape a b = shapeOf a == shapeOf b
+    holes = length . filter (== "?") . T.words
+    -- a ladder needs genuinely different lengths, not a repeated rendering
+    ladder g = length (nub (map holes g)) > 1
 
 -- | Render rzk's notation as the ASCII the levels use in prose and reference
 -- solutions, so a tapped move reads the same as the text the player would type.
