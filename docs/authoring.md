@@ -278,12 +278,10 @@ one: an `#assume`d or `#variable` lemma shows no type at all (only `#def` and
 `(A : U) → (B : U) → Equiv (A = B) (Equiv A B)`. A bare string entry is read as
 the name alone.
 
-By default the inventory is informative only. After a check, the engine scans the
-identifiers the proof body uses, keeps those the prelude defines, and reports any
-that are not granted. This is a soft amber notice, a heads-up rather than a
-blocker. Set `gated: true` to make a violation hard. Then a proof that uses an
-ungranted prelude lemma does not count as solved, even when it type-checks, and
-the success is withheld until only granted moves are used.
+After a check, the engine scans proof bodies for prelude-defined names. A name
+is allowed if it appears in the inventory or in a reference-solution proof body.
+Other names produce an amber notice by default. With `gated: true`, they prevent
+the proof from counting as solved, even when it type-checks.
 
 The `forbidden` list bans rzk's built-in eliminators, which the inventory cannot
 reach because they are not prelude definitions. List any of `idJ`, `first`,
@@ -293,10 +291,11 @@ notice by default, or a hard failure under `gated: true`.
 
 Only proof bodies are scanned, the text after each `:=`, never the type
 signatures. So the type formers a goal mentions are never flagged. Only
-prelude-defined names are kept, so local hypotheses and keywords are ignored. A
-level with an empty inventory gates nothing. Importantly, before turning `gated`
-on, check that the reference solution uses only granted names and no forbidden
-move, since a gated level whose solution trips its own gate cannot be solved.
+prelude-defined names are kept, so local hypotheses and keywords are ignored.
+An empty inventory disables inventory gating; forbidden moves are still checked.
+Before enabling `gated`, check that the reference solution uses no forbidden move.
+Names used by the reference solution are automatically allowed by the inventory
+gate.
 
 ## Behaviour checks
 
