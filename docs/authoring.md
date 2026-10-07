@@ -13,24 +13,27 @@ games.
 
 ## The Local Loop
 
-First, install the toolchain. The reproducible route uses
-[Nix](https://nixos.org/download/) with flakes enabled (the
-[Determinate Systems installer](https://github.com/DeterminateSystems/nix-installer)
-enables them by default). Running `nix develop` then provides
-`wasm32-wasi-cabal` and the rest of the toolchain. Without Nix, install the WASM
-toolchain via
-[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta)
-(FLAVOUR 9.12), then run `source ~/.ghc-wasm/env`. Then, after editing files
-under `game/`, run two targets.
+With [Nix](https://nixos.org/download/) and flakes enabled, use the default shell
+for the WebAssembly build and the native shell for bundling. Build the web app
+once, then bundle the game and serve it:
 
 ```sh
-make bundle      # parse game/ into public/game.json (fast, native)
-make serve       # serve public/ locally and play
+nix develop --command make build
+nix develop .#native --command make bundle
+nix develop --command make serve
 ```
 
+After editing `game/`, rerun the bundle and serve commands. After every
+`make build`, bundle again: rebuilding the web app removes `public/game.json`.
+
+Without Nix, install the WebAssembly toolchain via
+[`ghc-wasm-meta`](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta)
+(FLAVOUR 9.12) and run `source ~/.ghc-wasm/env`. Also install native GHC 9.8 or
+newer, Cabal and Node.js. Run `make build` once, then `make bundle` and `make serve`.
+
 `make bundle` reparses `game.yaml` and each level file's front-matter. When a
-file fails to parse, it reports the first one. A full rebuild of the web app is
-rarely needed; `make all` does it.
+file fails to parse, it reports the first one. With both toolchains available,
+`make all` rebuilds the web app and bundles the game.
 
 One further target helps while authoring. `make format-game` rewrites the
 `rzk prelude` blocks in place with rzk's canonical formatting. Run it when a
