@@ -7,8 +7,8 @@ The engine is a [miso](https://haskell-miso.org) application compiled with the
 **GHC WebAssembly backend** and linked with the `rzk` library, so the
 typechecker runs **in-process in the browser** — no server. The player fills
 holes (`?`) in a term; for each hole the engine shows its goal and local context
-(term variables, cube variables, tope assumptions) via rzk's structured
-`typecheckModulesWithHoles` query.
+(term variables, cube variables, tope assumptions) using rzk's
+`typecheckModulesWithHolesAndLemmas` query.
 
 ## Status
 
