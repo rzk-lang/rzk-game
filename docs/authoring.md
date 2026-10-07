@@ -197,7 +197,8 @@ The front-matter holds the intrinsic metadata.
   check. It defaults to `false`.
 - `moves`, `autohide-single-move`, and `requires-typing` control the Moves panel
   and the "requires typing" badge. See *The Moves panel* below. All three are
-  optional and default off.
+  optional. `moves` defaults to `on`, `autohide-single-move` to `false`, and an
+  unset `requires-typing` uses the automatic classification.
 
 The body has these roles of fenced rzk block, with surrounding prose.
 
