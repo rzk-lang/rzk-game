@@ -317,11 +317,11 @@ checks:
   label: negation is involutive at true
 ```
 
-A bare string is the proposition, proved by `refl`. Because `#data` computation
-is definitional, a `refl` check pins behaviour exactly: `not true = false` holds
-only when the player's `not` actually computes `true` to `false`, so the constant
-`\ _ → false` is rejected. The object form `{ prop, by }`, above, gives an
-explicit proof term and an optional `label` (see below). `by` defaults to `refl`;
+A bare string is the proposition, proved by `refl`. For `#data` computation,
+`not true = false` checks the result at `true`. The constant `\ _ → false` passes
+that check but fails the second check above, `not (not true) = true`. The object
+form `{ prop, by }` gives an explicit proof term and an optional `label` (see
+below). `by` defaults to `refl`;
 give a different term only when `refl` is not enough — for instance naming a lemma
 the prelude grants, `by: plus-comm 1 2`. The proof is checked with the player's
 definition and the prelude in scope. A front-matter check is a closed
