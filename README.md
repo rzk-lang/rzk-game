@@ -12,15 +12,15 @@ holes (`?`) in a term; for each hole the engine shows its goal and local context
 
 ## Status
 
-Early. The current build is the **L0** slice (textarea + result panel) with one
-hand-authored level (a `hom2` filler). See the design notes kept locally
-alongside this repo.
+The engine includes a game covering morphisms, functions, composition and
+associativity. It supports prose pages, prerequisites, hints and tap-to-fill proof
+moves. See [the authoring guide](docs/authoring.md) to create a game.
 
 ## Layout
 
 - `src/RzkGame/Level.hs` — the level model and the check against rzk.
-- `src/RzkGame/Content.hs` — hand-authored level content.
-- `app/Main.hs` — the miso L0 UI and the wasm entry points.
+- `src/RzkGame/Content.hs` — built-in fallback game.
+- `app/Main.hs` — the miso UI and WebAssembly entry points.
 - `static/` — the page and the WASI loader.
 - `cabal.project` — pins `rzk` and `miso` (both built under the wasm backend).
 
